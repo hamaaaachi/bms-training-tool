@@ -19,6 +19,10 @@ const DEFAULT_SCRATCH_THRESHOLD = 20; // 同上(スクラッチ用)
 const IDLE_GAP_MS = 10_000; // 閾値到達後、この時間入力が無ければ「曲が終わった」とみなす
 const COUNTDOWN_WINDOW_MS = 3_000; // 発火する直前この時間だけカウントダウンを表示する
 const CHECK_INTERVAL_MS = 1_000;
+// 閾値到達後(=カウントダウン中)に1回でも押すと待機が丸ごとリセットされてしまうと、
+// 選曲画面での誤操作等ですぐキャンセルされてしまうため、まとまった打鍵(既定15回分)が
+// 入ってきたときだけ「まだ演奏が続いている」と判断してリセットする(2026-09-06にユーザー指示)。
+const CANCEL_THRESHOLD = 15;
 
 export type SessionMetric = 'notes' | 'scratch';
 
@@ -26,10 +30,11 @@ interface MetricState {
   count: number;
   lastInputTime: number;
   threshold: number;
+  cancelVotes: number; // 閾値到達後に入ってきた、待機キャンセル用の打鍵の積算
 }
 
 function createState(defaultThreshold: number): MetricState {
-  return { count: 0, lastInputTime: 0, threshold: defaultThreshold };
+  return { count: 0, lastInputTime: 0, threshold: defaultThreshold, cancelVotes: 0 };
 }
 
 export class PlaySessionDetector {
@@ -78,14 +83,30 @@ export class PlaySessionDetector {
   // countは今回の入力で押された鍵盤の数(同時押しなら2以上)。スクラッチ・追加ボタンは
   // 呼び出し側(main.ts)で除外済みの値を渡すこと。
   recordPress(count: number): void {
-    this.notesState.count += count;
-    this.notesState.lastInputTime = Date.now();
+    this.applyInput(this.notesState, count);
   }
 
   // countは今回のスクラッチ回転量(ティック数)。
   recordScratch(count: number): void {
-    this.scratchState.count += count;
-    this.scratchState.lastInputTime = Date.now();
+    this.applyInput(this.scratchState, count);
+  }
+
+  private applyInput(state: MetricState, delta: number): void {
+    state.count += delta;
+    if (state.count < state.threshold) {
+      // まだ閾値未到達(=曲を演奏中)。通常通り入力のたびに無音タイマーを更新する。
+      state.lastInputTime = Date.now();
+      state.cancelVotes = 0;
+      return;
+    }
+    // 閾値到達後(=無音区間の計測中)。1回の打鍵では待機をキャンセルせず、
+    // CANCEL_THRESHOLD回分まとまって入ってきたときだけ「まだ演奏が続いている」と
+    // 判断して無音タイマーをリセットする。
+    state.cancelVotes += delta;
+    if (state.cancelVotes >= CANCEL_THRESHOLD) {
+      state.lastInputTime = Date.now();
+      state.cancelVotes = 0;
+    }
   }
 
   private setCountdown(secondsLeft: number | null): void {
@@ -118,6 +139,7 @@ export class PlaySessionDetector {
     // 余りを持ち越さず完全にリセットする。
     state.count = 0;
     state.lastInputTime = 0; // 次に入力が来るまでは再発火しない
+    state.cancelVotes = 0;
     this.setCountdown(null);
     this.onSongFinished();
   }
