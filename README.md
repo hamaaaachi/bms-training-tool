@@ -45,7 +45,8 @@ beatorajaのプレイ実績から今の実力に合った練習曲を毎日提�
 
 難易度表のデータは `web/scripts/update-tables.js` で取得し、GitHub Actionsで毎日自動更新しています。
 
-## 開発
+<details>
+<summary>開発(ソースからビルドしたい人向け)</summary>
 
 ```bash
 npm install
@@ -54,6 +55,8 @@ npm run web:serve   # http://localhost:8080 でローカル確認
 ```
 
 デプロイはGitHub Actions経由でGitHub Pagesへ自動で反映されます。
+
+</details>
 
 ## 安全性について
 
