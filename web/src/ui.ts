@@ -53,7 +53,6 @@ interface StringTable {
   ceilingAutoOption: string;
   statLevelBpm: string;
   statNotes: string;
-  statRatios: string;
   statClear: string;
   currentLevelHeading: string;
   ceilingUnknown: string;
@@ -118,7 +117,6 @@ const STRINGS: Record<Lang, StringTable> = {
     ceilingAutoOption: '自動(クリアランプから推定)',
     statLevelBpm: 'レベル: {level}  BPM: {bpm}',
     statNotes: 'ノーツ数: {notes}',
-    statRatios: '同時押し率 {chord}%  スクラッチ率 {scratch}%',
     statClear: 'クリアランプ: {clear}',
     currentLevelHeading: '現在のレベル({track}): {level}',
     ceilingUnknown: '上限: まだ検出されていません',
@@ -134,7 +132,7 @@ const STRINGS: Record<Lang, StringTable> = {
     needsHidPermission: 'フォルダへのアクセス許可が必要です。「フォルダを選択」を押して再度許可してください。',
     hidConnected: '{name} 接続中(HID直接読み取り)',
     gamepadConnected: 'コントローラー接続中: {names}',
-    calendarTooltip: '{date}: {count}打鍵',
+    calendarTooltip: '{date}: {count}打鍵 / {scratch}スクラッチ',
     unsupportedBrowser:
       'お使いのブラウザは対応していません。Google ChromeまたはMicrosoft Edgeの最新版でお試しください。',
   },
@@ -182,7 +180,6 @@ const STRINGS: Record<Lang, StringTable> = {
     ceilingAutoOption: 'Auto (estimated from clear lamps)',
     statLevelBpm: 'Level: {level}  BPM: {bpm}',
     statNotes: 'Notes: {notes}',
-    statRatios: 'Chord {chord}%  Scratch {scratch}%',
     statClear: 'Clear Lamp: {clear}',
     currentLevelHeading: 'Current Level ({track}): {level}',
     ceilingUnknown: 'Ceiling: not detected yet',
@@ -198,7 +195,7 @@ const STRINGS: Record<Lang, StringTable> = {
     needsHidPermission: 'Folder access is needed. Click "Choose Folder" to re-grant access.',
     hidConnected: '{name} connected (direct HID read)',
     gamepadConnected: 'Controller connected: {names}',
-    calendarTooltip: '{date}: {count} keystrokes',
+    calendarTooltip: '{date}: {count} keystrokes / {scratch} scratches',
     unsupportedBrowser: 'Your browser is not supported. Please try the latest Google Chrome or Microsoft Edge.',
   },
   ko: {
@@ -245,7 +242,6 @@ const STRINGS: Record<Lang, StringTable> = {
     ceilingAutoOption: '자동(클리어 램프로 추정)',
     statLevelBpm: '레벨: {level}  BPM: {bpm}',
     statNotes: '노트 수: {notes}',
-    statRatios: '동시치기 {chord}%  스크래치 {scratch}%',
     statClear: '클리어 램프: {clear}',
     currentLevelHeading: '현재 레벨({track}): {level}',
     ceilingUnknown: '상한: 아직 감지되지 않았습니다',
@@ -261,7 +257,7 @@ const STRINGS: Record<Lang, StringTable> = {
     needsHidPermission: '폴더 접근 권한이 필요합니다. "폴더 선택"을 눌러 다시 허용해 주세요.',
     hidConnected: '{name} 연결됨(HID 직접 읽기)',
     gamepadConnected: '컨트롤러 연결됨: {names}',
-    calendarTooltip: '{date}: {count}회 입력',
+    calendarTooltip: '{date}: {count}회 입력 / {scratch}회 스크래치',
     unsupportedBrowser: '지원되지 않는 브라우저입니다. 최신 Google Chrome 또는 Microsoft Edge를 사용해 주세요.',
   },
 };
@@ -319,10 +315,6 @@ function buildCategoryCard(suggestion: DailyRecommendationResult['suggestions'][
   const lines = [
     t('statLevelBpm', { level: song.level, bpm: analysis.bpm }),
     t('statNotes', { notes: song.notes }),
-    t('statRatios', {
-      chord: (analysis.chordRatio * 100).toFixed(0),
-      scratch: (analysis.scratchRatio * 100).toFixed(0),
-    }),
     t('statClear', { clear: song.clearName }),
   ];
   for (const line of lines) {
@@ -852,6 +844,7 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
   let scratchTodayCount = 0;
   let scratchMonthTotal = 0;
   let lastHistory: KeystrokeHistory | null = null;
+  let lastScratchHistory: KeystrokeHistory = {};
   let lastConnectedNames: string[] = [];
   let hidActive = false;
   let hidDeviceName: string | null = null;
@@ -988,18 +981,19 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const count = history[dateStr] ?? 0;
+      const scratch = lastScratchHistory[dateStr] ?? 0;
       monthTotal += count;
       const el = document.createElement('div');
       el.className = 'day-cell';
       el.textContent = String(day);
-      el.title = t('calendarTooltip', { date: dateStr, count });
+      el.title = t('calendarTooltip', { date: dateStr, count, scratch });
       const intensity = count === 0 ? 0 : Math.min(1, count / maxCount);
       el.style.background = count === 0 ? '#1a1a24' : `rgba(139, 123, 255, ${(0.18 + intensity * 0.65).toFixed(2)})`;
       if (day === today.getDate()) {
         el.classList.add('today');
       }
       el.addEventListener('click', () => {
-        calendarDetail.textContent = t('calendarTooltip', { date: dateStr, count });
+        calendarDetail.textContent = t('calendarTooltip', { date: dateStr, count, scratch });
         calendarDetail.hidden = false;
       });
       calendar.appendChild(el);
@@ -1018,10 +1012,12 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
 
   function refreshScratchFromStore(): void {
     logicModule.getScratchHistory().then((history) => {
+      lastScratchHistory = history;
       scratchTodayCount = history[todayDateStr()] ?? 0;
       scratchMonthTotal = sumCurrentMonth(history);
       scratchToday.textContent = String(scratchTodayCount);
       scratchMonth.textContent = String(scratchMonthTotal);
+      if (lastHistory) renderCalendar(lastHistory);
     });
   }
 
