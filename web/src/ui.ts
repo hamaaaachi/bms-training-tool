@@ -44,6 +44,7 @@ interface StringTable {
   chooseExtraChartBtn: string;
   extraChartStatus: string;
   nextSongCountdown: string;
+  favoriteHint: string;
   categoryGachi: string;
   categoryMidspeed: string;
   categoryHighspeed: string;
@@ -108,6 +109,7 @@ const STRINGS: Record<Lang, StringTable> = {
     chooseExtraChartBtn: '譜面フォルダを追加で選択',
     extraChartStatus: '追加フォルダ: {count}件',
     nextSongCountdown: '次の曲まで {seconds}',
+    favoriteHint: 'Ctrl+D でお気に入り登録',
     categoryGachi: 'ガチ押し',
     categoryMidspeed: '中速',
     categoryHighspeed: '高速',
@@ -171,6 +173,7 @@ const STRINGS: Record<Lang, StringTable> = {
     chooseExtraChartBtn: 'Add another chart folder',
     extraChartStatus: 'Extra folders: {count}',
     nextSongCountdown: 'Next songs in {seconds}',
+    favoriteHint: 'Ctrl+D to bookmark this page',
     categoryGachi: 'Gachi-oshi',
     categoryMidspeed: 'Midspeed',
     categoryHighspeed: 'Highspeed',
@@ -233,6 +236,7 @@ const STRINGS: Record<Lang, StringTable> = {
     chooseExtraChartBtn: '추가 채보 폴더 선택',
     extraChartStatus: '추가 폴더: {count}개',
     nextSongCountdown: '다음 추천까지 {seconds}',
+    favoriteHint: 'Ctrl+D로 즐겨찾기 추가',
     categoryGachi: '가치오시',
     categoryMidspeed: '중속',
     categoryHighspeed: '고속',
@@ -1059,6 +1063,7 @@ function applyStaticStrings(): void {
   setText('keystroke-panel-title', t('keystrokePanelTitle'));
   setText('share-x-btn', t('shareBtn'));
   setText('choose-extra-chart-btn', t('chooseExtraChartBtn'));
+  setText('favorite-hint', t('favoriteHint'));
   setText('label-today-keystrokes', t('todayKeystrokes'));
   setText('label-today-scratches', t('todayScratches'));
   setText('label-month-keystrokes', t('monthKeystrokes'));
