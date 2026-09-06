@@ -1,0 +1,33 @@
+name: Update difficulty table snapshot
+
+on:
+  schedule:
+    # 毎日9:00 JST(0:00 UTC)に難易度表を再取得する。ブラウザから直接fetchできない
+    # 難易度表サイト(CORS未対応)をCI経由で取得し、同一オリジンの静的ファイルとして
+    # 配信するための仕組み(web/src/tables/tablesWeb.tsを参照)。
+    - cron: '0 0 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node web/scripts/update-tables.js
+      - name: Commit snapshot if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- web/public/tables-snapshot.json; then
+            git add web/public/tables-snapshot.json
+            git commit -m "Update difficulty table snapshot"
+            git push
+          else
+            echo "変更なし"
+          fi

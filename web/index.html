@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>BMS Training Tool</title>
+  <style>
+    :root {
+      /* ページ全体は暗色ベースだが、これを指定しないとブラウザがselectのポップアップ
+         メニューやスクロールバーなどのネイティブUIを既定(明るい)配色で描画してしまい、
+         見た目がちぐはぐになる。ネイティブ要素も暗色側に寄せる(2026-09-06にユーザー指摘)。 */
+      color-scheme: dark;
+      --bg: #0d0d13;
+      --bg-glow: radial-gradient(circle at 15% -10%, #241a3f 0%, transparent 45%),
+        radial-gradient(circle at 90% 0%, #1a2a3f 0%, transparent 40%);
+      --panel: #15151f;
+      --panel-border: #26263a;
+      --panel-raised: #1b1b28;
+      --text: #cbc4ef;
+      --text-dim: #a49fcf;
+      --on-accent: #17122c;
+      --muted: #8d8fa8;
+      --accent: #8b7bff;
+      --accent-strong: #a893ff;
+      --accent-text: #d9c9ff;
+      --warn: #ffb454;
+      --cat-gachi: #ff6b81;
+      --cat-midspeed: #5ab0ff;
+      --cat-highspeed: #b98bff;
+      --cat-delay: #4fd1c5;
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', system-ui, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: var(--bg) var(--bg-glow);
+      background-attachment: fixed;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 36px 28px 64px;
+    }
+
+    .app-header {
+      margin-bottom: 32px;
+      padding-left: 14px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .app-header .header-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .app-header h1 {
+      font-size: 22px;
+      margin: 0;
+      letter-spacing: 0.2px;
+      color: var(--text);
+    }
+
+    #lang-select {
+      font-size: 12px;
+      padding: 5px 9px;
+    }
+
+    .app-header .tagline {
+      margin: 2px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    #about-link {
+      font-size: 12px;
+      color: var(--accent-text);
+      white-space: nowrap;
+    }
+
+    .app-footer {
+      margin-top: 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .app-footer a {
+      color: var(--accent-text);
+    }
+
+    section.panel {
+      background: linear-gradient(180deg, var(--panel-raised), var(--panel));
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      padding: 24px 26px;
+      margin-bottom: 24px;
+      box-shadow: 0 12px 32px -20px rgba(0, 0, 0, 0.7);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .panel-header h2 {
+      font-size: 15px;
+      margin: 0;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: var(--text);
+    }
+
+    .panel-header .hint {
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 9px 18px;
+      cursor: pointer;
+      border-radius: 9px;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-raised);
+      color: var(--text);
+      transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: #201f30;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      cursor: default;
+      opacity: 0.4;
+    }
+
+    button.primary {
+      background: linear-gradient(135deg, var(--accent), #6d5cf0);
+      border-color: transparent;
+      color: var(--on-accent);
+      box-shadow: 0 6px 18px -8px rgba(139, 123, 255, 0.7);
+    }
+
+    button.primary:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    select {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 9px;
+      background: var(--panel-raised);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+    }
+
+    select:focus,
+    button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .control-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px 20px;
+      margin-bottom: 16px;
+    }
+
+    .control-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 140px;
+    }
+
+    .control-field select {
+      width: 100%;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .empty-message {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .song-card {
+      background: var(--panel-raised);
+      border: 1px solid var(--panel-border);
+      border-left: 3px solid var(--card-accent, var(--accent));
+      border-radius: 10px;
+      padding: 14px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .song-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -14px rgba(0, 0, 0, 0.8);
+    }
+
+    .song-card.category-gachi { --card-accent: var(--cat-gachi); }
+    .song-card.category-midspeed { --card-accent: var(--cat-midspeed); }
+    .song-card.category-highspeed { --card-accent: var(--cat-highspeed); }
+    .song-card.category-delay { --card-accent: var(--cat-delay); }
+
+    .song-card .category-label {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--card-accent, var(--accent)) 22%, transparent);
+      color: var(--card-accent, var(--accent-text));
+      margin-bottom: 8px;
+    }
+
+    .song-card .title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 2px;
+      line-height: 1.35;
+    }
+
+    .song-card .artist {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .song-card .stat-line {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+    }
+
+    .song-card .table-badges {
+      margin-top: 10px;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .table-badge {
+      font-size: 10.5px;
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: #23233450;
+      border: 1px solid var(--panel-border);
+      color: var(--muted);
+    }
+
+    #level-heading {
+      margin-top: 4px;
+      margin-bottom: 2px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent-text);
+    }
+
+    #advance-countdown {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--accent-strong);
+      margin: 2px 0;
+    }
+
+    #ceiling-heading {
+      font-size: 12px;
+      color: var(--warn);
+      min-height: 1.4em;
+    }
+
+    .direction-row {
+      margin-top: 14px;
+    }
+
+    .settings-row {
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .setup-banner {
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--accent-text);
+      line-height: 1.6;
+    }
+
+    #extra-chart-status {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .settings-label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    #beatoraja-path {
+      font-size: 12px;
+      color: var(--text-dim);
+      font-family: 'Consolas', monospace;
+    }
+
+    .auto-advance-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      margin-left: 4px;
+    }
+
+    .auto-advance-label input {
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .keystroke-summary {
+      display: flex;
+      gap: 24px;
+      align-items: baseline;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .keystroke-today-count {
+      font-size: 42px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent-strong), #ff9fd6);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      line-height: 1;
+    }
+
+    .keystroke-month-count {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text-dim);
+      line-height: 1;
+    }
+
+    .scratch-today-count {
+      font-size: 42px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--cat-delay), var(--accent-strong));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      line-height: 1;
+    }
+
+    .scratch-month-count {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text-dim);
+      line-height: 1;
+    }
+
+    .keystroke-today-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .gamepad-status {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .gamepad-status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+    }
+
+    .gamepad-status.connected {
+      color: #9ef0c4;
+    }
+
+    .gamepad-status.connected::before {
+      background: #4be39a;
+      box-shadow: 0 0 8px 1px rgba(75, 227, 154, 0.7);
+    }
+
+    .calendar-month {
+      margin-top: 18px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      letter-spacing: 0.4px;
+    }
+
+    .calendar {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+      max-width: 420px;
+    }
+
+    .calendar .weekday {
+      font-size: 10.5px;
+      color: var(--muted);
+      text-align: center;
+      padding-bottom: 4px;
+    }
+
+    .calendar .day-cell {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      transition: transform 0.1s ease;
+    }
+
+    .calendar .day-cell:not(.empty):hover {
+      transform: scale(1.12);
+    }
+
+    .calendar .day-cell:not(.empty) {
+      cursor: pointer;
+    }
+
+    .calendar .day-cell.empty {
+      border: none;
+    }
+
+    .calendar .day-cell.today {
+      border: 1.5px solid var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .calendar-detail {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--accent-text);
+    }
+
+    .ad-slot {
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* 広告タグが未挿入の間は何も表示しない(空の枠が目立たないようにする) */
+    .ad-slot:empty {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="app-header">
+      <div class="header-top">
+        <h1>BMS Training Tool</h1>
+        <select id="lang-select"></select>
+      </div>
+      <p class="tagline" id="app-tagline">beatoraja連携・難易度表ベースの練習アシスタント</p>
+      <a id="about-link" href="https://github.com/hamaaaachi/bms-training-tool#readme" target="_blank" rel="noopener">使い方・詳細</a>
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2 id="recommend-panel-title">おすすめ選曲</h2>
+      </div>
+      <div id="setup-banner" class="setup-banner" hidden></div>
+      <div class="row settings-row">
+        <span class="settings-label" id="beatoraja-folder-label">beatorajaフォルダ:</span>
+        <span id="beatoraja-path">未設定</span>
+        <button id="choose-beatoraja-btn">フォルダを選択</button>
+        <button id="choose-extra-chart-btn">譜面フォルダを追加で選択</button>
+        <span id="extra-chart-status"></span>
+      </div>
+      <div class="control-grid">
+        <div class="control-field">
+          <label for="player-select" id="label-player">プレイヤー</label>
+          <select id="player-select" disabled><option id="player-placeholder-option">起動時に自動読み込み...</option></select>
+        </div>
+        <div class="control-field">
+          <label for="track-select" id="label-mode">モード</label>
+          <select id="track-select" disabled></select>
+        </div>
+        <div class="control-field">
+          <label for="level-select" id="label-level">レベル</label>
+          <select id="level-select" disabled></select>
+        </div>
+        <div class="control-field">
+          <label for="theme-select" id="label-theme">テーマ</label>
+          <select id="theme-select" disabled></select>
+        </div>
+        <div class="control-field">
+          <label for="ceiling-select" id="label-ceiling">今日の上限</label>
+          <select id="ceiling-select" disabled></select>
+        </div>
+        <div class="control-field">
+          <label for="floor-select" id="label-floor">下限</label>
+          <select id="floor-select" disabled></select>
+        </div>
+        <div class="control-field">
+          <label for="level-step-select" id="label-level-step">レベルアップ幅</label>
+          <select id="level-step-select" disabled></select>
+        </div>
+      </div>
+      <div class="row">
+        <button id="reroll-btn" class="primary" disabled>この3曲を変える</button>
+        <button id="warmup-btn" disabled>ウォーミングアップ(下限まで下げる)</button>
+      </div>
+      <div id="level-heading">起動時に自動でおすすめを読み込みます...</div>
+      <div id="advance-countdown" hidden></div>
+      <div id="ceiling-heading"></div>
+      <div class="row direction-row">
+        <label class="auto-advance-label">
+          <input type="checkbox" id="auto-advance-checkbox" checked />
+          <span id="auto-advance-text">1曲プレイ後に自動でレベルを調整して次の選曲を表示</span>
+        </label>
+      </div>
+      <div id="suggestion-results" class="card-grid"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2 id="keystroke-panel-title">打鍵カウント</h2>
+      </div>
+      <div class="row">
+        <div class="gamepad-status" id="gamepad-status">コントローラーが検出されていません</div>
+        <button id="connect-hid-btn">コントローラーに接続(PHOENIXWAN/INFINITAS)</button>
+      </div>
+      <div class="keystroke-summary">
+        <div>
+          <div class="keystroke-today-count" id="keystroke-today-count">0</div>
+          <div class="keystroke-today-label" id="label-today-keystrokes">本日の打鍵数</div>
+        </div>
+        <div>
+          <div class="scratch-today-count" id="scratch-today-count">0</div>
+          <div class="keystroke-today-label" id="label-today-scratches">本日のスクラッチ数</div>
+        </div>
+        <div>
+          <div class="keystroke-month-count" id="keystroke-month-count">0</div>
+          <div class="keystroke-today-label" id="label-month-keystrokes">今月の打鍵数</div>
+        </div>
+        <div>
+          <div class="scratch-month-count" id="scratch-month-count">0</div>
+          <div class="keystroke-today-label" id="label-month-scratches">今月のスクラッチ数</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="share-x-btn">本日の打鍵を投稿する</button>
+      </div>
+      <div class="calendar-month" id="calendar-month"></div>
+      <div class="calendar" id="calendar"></div>
+      <div class="calendar-detail" id="calendar-detail" hidden></div>
+    </section>
+
+    <!--
+      広告枠(ページ最下部)。Google AdSense等のアカウント審査が通ったら、発行される
+      <ins class="adsbygoogle">タグ等をこの中に差し替える(2026-09-06にユーザー依頼)。
+      現時点では広告ネットワークのスクリプトは未導入(審査未完了のため)。
+    -->
+    <div id="ad-slot" class="ad-slot"></div>
+
+    <div class="app-footer">
+      <span id="dev-credit-label">開発者</span>: <a href="https://x.com/hamapuyo" target="_blank" rel="noopener">@hamapuyo</a>
+    </div>
+  </div>
+
+  <script src="bundle.js"></script>
+</body>
+</html>

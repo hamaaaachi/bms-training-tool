@@ -1,0 +1,53 @@
+{
+  "name": "bms-training-tool",
+  "version": "0.1.0",
+  "description": "BMS training tool desktop app",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json && node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "watch": "tsc -p tsconfig.json --watch",
+    "package": "npm run build && electron-builder --win",
+    "web:typecheck": "tsc -p web/tsconfig.json",
+    "web:tables": "node web/scripts/update-tables.js",
+    "web:build": "npm run web:typecheck && node web/scripts/build.js",
+    "web:serve": "node web/scripts/serve.js"
+  },
+  "author": "hamaaaachi",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "electron": "^31.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@types/node-hid": "^1.3.4",
+    "@types/sql.js": "^1.4.11",
+    "node-hid": "^3.4.0",
+    "sql.js": "^1.14.2"
+  },
+  "build": {
+    "appId": "com.hamaaaachi.bms-training-tool",
+    "productName": "BMS Training Tool",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "**/sql-wasm.wasm"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  }
+}
