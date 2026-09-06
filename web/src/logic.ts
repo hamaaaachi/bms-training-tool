@@ -440,7 +440,8 @@ export const playSessionDetector = new PlaySessionDetector(
     handleSongFinished().catch(() => {});
   },
   (secondsLeft) => {
-    onCountdownCallback?.(secondsLeft);
+    // 自動切り替えがオフの間は、切り替わらないカウントダウンを見せると紛らわしいため隠す。
+    onCountdownCallback?.(autoAdvanceEnabled ? secondsLeft : null);
   }
 );
 playSessionDetector.start();
