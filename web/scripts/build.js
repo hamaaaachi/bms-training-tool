@@ -24,6 +24,7 @@ async function main() {
   });
 
   fs.copyFileSync(path.join(webRoot, 'index.html'), path.join(distDir, 'index.html'));
+  fs.copyFileSync(path.join(webRoot, 'public', 'og-image.png'), path.join(distDir, 'og-image.png'));
 
   // sql.jsのpackage.jsonは"exports"で"./package.json"を公開していないため、
   // 代わりにmainエントリ(dist/sql-wasm.js)から dist/ ディレクトリを逆算する。
