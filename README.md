@@ -66,6 +66,8 @@ exeのダウンロードは不要で、ブラウザで開くだけです。プ�
 
 コードは[GitHubで公開](https://github.com/hamaaaachi/bms-training-tool)しています。
 
+使用は自己責任でお願いします。
+
 ## ライセンス
 
 [MIT License](./LICENSE)
