@@ -1,8 +1,8 @@
 // クリアランプの実績から「今のプレイヤーの上限」を推定する。
-// 例: sl11でFailedの曲が5個以上あれば、sl11を壁として検出する。
-// ただし、そのレベル帯でHard以上のクリアが3つ以上あれば「実際はこなせている」とみなして
+// 例: sl11でFailedの曲が10個以上あれば、sl11を壁として検出する。
+// ただし、そのレベル帯でHard以上のクリアが7つ以上あれば「実際はこなせている」とみなして
 // 壁の候補から除外する(低いレベルはプレイ数自体が多く、Failedの絶対数だけ見ると
-// 誤検出しやすいため)。
+// 誤検出しやすいため。2026-09-06にユーザー指示で5件→10件、3件→7件に調整)。
 export interface ClearSample {
   level: number;
   playcount: number;
@@ -13,11 +13,11 @@ export interface ClearSample {
 const FAILED_CLEAR = 1;
 const HARD_CLEAR = 6;
 // このレベルでFailedの曲がこの数以上あれば「壁」の候補とみなす(割合ではなく個数で判定)
-const FAILED_WALL_COUNT = 5;
+const FAILED_WALL_COUNT = 10;
 // このレベルでHard以上の曲がこの数以上あれば、そのレベル帯は壁の候補から除外する
-const HARD_IGNORE_COUNT = 3;
+const HARD_IGNORE_COUNT = 7;
 
-// レベルが低い順に見ていき、(Hard以上が3つ未満 かつ Failedが5つ以上)になる最初のレベルを返す。
+// レベルが低い順に見ていき、(Hard以上が7つ未満 かつ Failedが10つ以上)になる最初のレベルを返す。
 // 壁を検出できなければ(データ不足、またはまだ壁に到達していない)nullを返す。
 export function computeClearCeiling(samples: ClearSample[]): number | null {
   const failedCounts = new Map<number, number>();
