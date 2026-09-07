@@ -112,12 +112,20 @@ const SUGGESTIONS_PER_THEME = 3;
 
 // 「練習の必要度」順に並べる: プレイ回数0(No play)を最優先、以降はクリアランプが低いほど
 // (Failed→Easy→Normal→...→Max)優先度が高い。ClearTypeName配列のインデックスが
-// そのままこの優先順位になっている(score.clearの値そのもの)。同条件の曲同士は
-// プレイ回数が少ない方を優先し、それでも並びが決まらない場合だけランダムに散らす
+// そのままこの優先順位になっている(score.clearの値そのもの)。
+// クリアランプが同じ場合は、まだ提案したことが無い曲を優先し、それも同じならプレイ回数が
+// 少ない方を優先、それでも並びが決まらない場合だけランダムに散らす
 // (2026-09-06にユーザー指示: すべてのリコメンドでこの優先順位を使う)。
-function sortByPracticeNeed(list: AnalyzedSong[]): AnalyzedSong[] {
+// クリアランプの比較を「未提案/提案済み」の分割より先に行うのが重要: 以前は先に
+// 未提案/提案済みで2グループに分けてからクリアランプで並べていたため、「過去に提案済みだが
+// まだプレイしていないNoPlayの曲」が「今日初めて出てくるFailedの曲」より後回しになる
+// ことがあった(2026-09-06にユーザー指摘)。
+function sortByPracticeNeed(list: AnalyzedSong[], alreadySuggested: Set<string>): AnalyzedSong[] {
   return [...list].sort((a, b) => {
     if (a.song.clear !== b.song.clear) return a.song.clear - b.song.clear;
+    const aSeen = alreadySuggested.has(a.song.sha256) ? 1 : 0;
+    const bSeen = alreadySuggested.has(b.song.sha256) ? 1 : 0;
+    if (aSeen !== bSeen) return aSeen - bSeen;
     if (a.song.playcount !== b.song.playcount) return a.song.playcount - b.song.playcount;
     return Math.random() - 0.5;
   });
@@ -128,8 +136,9 @@ function sortByPracticeNeed(list: AnalyzedSong[]): AnalyzedSong[] {
 // そのテーマの参考難易度表に載っている曲のsha256集合)に含まれる曲は、BPM/パターンの
 // ヒューリスティック分類が別のテーマだったとしてもこのテーマの候補に含め(参考難易度表への
 // 掲載は「このテーマの譜面である」という強いシグナルのため)、かつ最優先で表示する。
-// その中でもalreadySuggestedに含まれない(＝まだ提案したことがない)曲をさらに優先する
-// (2026-09-06にユーザー指示: ディレイ/ガチ押しは参考難易度表の掲載曲を優先表示・拾い上げる)。
+// その中でもクリアランプが同じ曲同士は、alreadySuggestedに含まれない(＝まだ提案した
+// ことがない)曲をさらに優先する(2026-09-06にユーザー指示: ディレイ/ガチ押しは参考
+// 難易度表の掲載曲を優先表示・拾い上げる)。
 // shownTodayTitlesに含まれるタイトルの曲は、その日は一切候補に含めない
 // (sha256が異なる別ファイルとして同じ曲が二重登録されているケースがあり、
 // sha256だけで判定すると同じ曲がその日のうちに複数回出てしまうため)。
@@ -176,12 +185,14 @@ export function pickByTheme(
     }
   }
 
-  const priority = matching.filter((c) => priorityMatches.has(c.song.sha256));
-  const rest = matching.filter((c) => !priorityMatches.has(c.song.sha256));
-  const priorityUnseen = sortByPracticeNeed(priority.filter((c) => !alreadySuggested.has(c.song.sha256)));
-  const prioritySeen = sortByPracticeNeed(priority.filter((c) => alreadySuggested.has(c.song.sha256)));
-  const unseen = sortByPracticeNeed(rest.filter((c) => !alreadySuggested.has(c.song.sha256)));
-  const seen = sortByPracticeNeed(rest.filter((c) => alreadySuggested.has(c.song.sha256)));
+  const priority = sortByPracticeNeed(
+    matching.filter((c) => priorityMatches.has(c.song.sha256)),
+    alreadySuggested
+  );
+  const rest = sortByPracticeNeed(
+    matching.filter((c) => !priorityMatches.has(c.song.sha256)),
+    alreadySuggested
+  );
 
   const picks: AnalyzedSong[] = [];
   const pickedTitles = new Set<string>();
@@ -193,9 +204,7 @@ export function pickByTheme(
       pickedTitles.add(c.song.title);
     }
   };
-  addFrom(priorityUnseen);
-  addFrom(prioritySeen);
-  addFrom(unseen);
-  addFrom(seen);
+  addFrom(priority);
+  addFrom(rest);
   return picks;
 }
