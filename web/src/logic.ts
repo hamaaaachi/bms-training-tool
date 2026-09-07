@@ -110,7 +110,6 @@ async function ensureLibrary(playerId: string): Promise<SongWithScore[]> {
     cachedLibrary = library.filter((song) => song.mode === MODE_7K);
     cachedPlayerId = playerId;
     updateAutoAdvanceThreshold(cachedLibrary).catch(() => {});
-    updateScratchThreshold(cachedLibrary).catch(() => {});
   }
   return cachedLibrary;
 }
@@ -126,37 +125,6 @@ async function updateAutoAdvanceThreshold(library: SongWithScore[]): Promise<voi
     }
   }
   if (Number.isFinite(min)) playSessionDetector.setThreshold(min);
-}
-
-// Scramble(スクラッチ)トラック選択中の自動レベルアップ判定用。SB-1(Scramble難易度表の
-// 一番低いレベル)に掲載されている曲のうち、実際のスクラッチ回数が一番少ないものを閾値にする
-// (「一番スクラッチが少ない曲でも必ず発火する」ため。2026-09-06にユーザー指示)。
-// songdata.dbにはスクラッチ数の内訳が無いため、譜面ファイルを実際に解析して算出する。
-async function updateScratchThreshold(library: SongWithScore[]): Promise<void> {
-  const root = cachedDirHandle;
-  if (!root) return;
-  const difficultyTables = await getDifficultyTables();
-  const analysisCache = await getAnalysisCache();
-  let min = Infinity;
-  for (const song of library) {
-    const matches = difficultyTables.lookup(song.md5, song.sha256);
-    if (!matches.some((m) => m.tableName === 'Scramble難易度表' && m.level === '-1')) continue;
-    if (!(await fileExistsAtAny(root, cachedExtraDirHandles, song.path))) continue;
-    let analysis = analysisCache.get(song.sha256);
-    if (!analysis) {
-      try {
-        const bytes = await readFileAtAny(root, cachedExtraDirHandles, song.path);
-        analysis = analyzeSongBytes(bytes, song.sha256);
-        analysisCache.set(analysis);
-      } catch {
-        continue; // ファイルが読めない/壊れている譜面はスキップ
-      }
-    }
-    if (typeof analysis.totalNotes !== 'number') continue; // この機能追加前にキャッシュされた解析結果には無い
-    const scratchCount = Math.round(analysis.totalNotes * analysis.scratchRatio);
-    if (scratchCount > 0 && scratchCount < min) min = scratchCount;
-  }
-  if (Number.isFinite(min)) playSessionDetector.setScratchThreshold(min);
 }
 
 export interface DailyRecommendationResult {
@@ -338,7 +306,7 @@ export async function refreshSuggestions(
   settings.update(playerId, track, level, effectiveTheme);
   currentTrack = track;
   currentTheme = effectiveTheme;
-  playSessionDetector.setMetric(track === 'scratch' ? 'scratch' : 'notes');
+  playSessionDetector.setMetric(track === 'scratch' ? 'scrambleKeys' : 'notes');
 
   const [{ suggestions, emptyReason }, ceiling] = await Promise.all([
     buildDailySuggestions(playerId, track, level, effectiveTheme),
@@ -513,7 +481,5 @@ export async function addKeystrokeDelta(delta: number): Promise<number> {
 
 export async function addScratchDelta(delta: number): Promise<number> {
   const store = await getScratchStore();
-  const total = store.addDelta(delta);
-  playSessionDetector.recordScratch(delta);
-  return total;
+  return store.addDelta(delta);
 }

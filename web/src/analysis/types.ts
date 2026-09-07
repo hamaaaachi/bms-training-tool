@@ -5,7 +5,6 @@ export interface SongAnalysis {
   bpm: number;
   avgNps: number;
   peakNps: number;
-  totalNotes: number;
   chordRatio: number;
   scratchRatio: number;
   longNoteRatio: number;

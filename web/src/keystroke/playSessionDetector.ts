@@ -1,22 +1,22 @@
-// 打鍵数(またはスクラッチ回数)の累計が閾値(threshold)に達し、かつそこから一定時間
-// (IDLE_GAP_MS)入力が途切れたら「1曲分プレイし終わった」とみなし、次の選曲(レベル自動調整)
-// をトリガーする。
+// 打鍵数の累計が閾値(threshold)に達し、かつそこから一定時間(IDLE_GAP_MS)入力が
+// 途切れたら「1曲分プレイし終わった」とみなし、次の選曲(レベル自動調整)をトリガーする。
 // 時間・無音区間だけの判定だと、Satellite sl0のようにノーツ数が少なく短時間で終わる譜面では
 // 「プレイ中」と判定される前に曲が終わってしまい、一度も発火しないことがあった
 // (2026-09-06にユーザー指示)。逆に打鍵数だけで判定すると、曲の途中でいきなり発火してしまい
 // 不自然なため、閾値到達後に実際に手が止まった(曲が終わった)タイミングを無音区間検知で
 // 待ってから発火する(2026-09-06にユーザー指示で追加)。
-// 閾値は固定値ではなく、実際のライブラリのSatellite表掲載曲の最小ノーツ数をmain.ts側で計算して
-// setThreshold()で渡す(「一番ノーツ数が少ない曲でも必ず発火する」ため。2026-09-06にユーザー指示)。
-// Scramble(スクラッチ)トラック選択中は、鍵盤の打鍵数ではなくスクラッチ回数で判定する方が
-// 自然なため、判定に使う指標(metric)を切り替えられるようにしている
-// (2026-09-06にユーザー指示。閾値はScramble難易度表のSB-1掲載曲の最小スクラッチ数)。
+// 鍵盤/発狂トラックの閾値は固定値ではなく、実際のライブラリのSatellite表掲載曲の最小
+// ノーツ数をmain.ts側で計算してsetThreshold()で渡す(「一番ノーツ数が少ない曲でも必ず
+// 発火する」ため。2026-09-06にユーザー指示)。
+// Scramble(スクラッチ)トラックは、スクラッチ回転量ベースの判定だとうまく発火しない
+// ことがあったため、鍵盤の打鍵数(固定300回)ベースに変更した
+// (2026-09-06にユーザー指示: スクラッチ回数ではなく鍵盤300回の固定閾値に)。
 // IDLE_GAP_MSが短すぎると、譜面中盤の無音区間(イントロ・ブレイク等)を曲終わりと誤検知して
 // 1曲で2回レベルが上がってしまうことがあった。20秒→10秒と調整したが、閾値到達後の
 // キャンセルにCANCEL_THRESHOLD回分の打鍵を要求するようになった(下記)ことで誤検知の
 // リスクが下がったため、テンポよく次に進めるよう6秒に短縮した(2026-09-06にユーザー指示)。
-const DEFAULT_THRESHOLD = 1000; // ライブラリ未読み込み時などのフォールバック値
-const DEFAULT_SCRATCH_THRESHOLD = 20; // 同上(スクラッチ用)
+const DEFAULT_THRESHOLD = 1000; // ライブラリ未読み込み時などのフォールバック値(鍵盤/発狂用)
+const SCRAMBLE_KEY_THRESHOLD = 300; // Scramble用の固定閾値(鍵盤の打鍵数)
 const IDLE_GAP_MS = 6_000; // 閾値到達後、この時間入力が無ければ「曲が終わった」とみなす
 const COUNTDOWN_WINDOW_MS = 3_000; // 発火する直前この時間だけカウントダウンを表示する
 const CHECK_INTERVAL_MS = 1_000;
@@ -25,7 +25,7 @@ const CHECK_INTERVAL_MS = 1_000;
 // 入ってきたときだけ「まだ演奏が続いている」と判断してリセットする(2026-09-06にユーザー指示)。
 const CANCEL_THRESHOLD = 15;
 
-export type SessionMetric = 'notes' | 'scratch';
+export type SessionMetric = 'notes' | 'scrambleKeys';
 
 interface MetricState {
   count: number;
@@ -41,7 +41,7 @@ function createState(defaultThreshold: number): MetricState {
 export class PlaySessionDetector {
   private metric: SessionMetric = 'notes';
   private notesState = createState(DEFAULT_THRESHOLD);
-  private scratchState = createState(DEFAULT_SCRATCH_THRESHOLD);
+  private scrambleKeyState = createState(SCRAMBLE_KEY_THRESHOLD);
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCountdown: number | null = null;
 
@@ -69,27 +69,20 @@ export class PlaySessionDetector {
   }
 
   // ライブラリ読み込み(プレイヤー切替時など)のたびに呼び直す。0以下や不正値は無視する。
+  // (鍵盤/発狂トラック用。Scrambleトラックは固定のSCRAMBLE_KEY_THRESHOLDを使う)
   setThreshold(notes: number): void {
     if (Number.isFinite(notes) && notes > 0) {
       this.notesState.threshold = Math.floor(notes);
     }
   }
 
-  setScratchThreshold(count: number): void {
-    if (Number.isFinite(count) && count > 0) {
-      this.scratchState.threshold = Math.floor(count);
-    }
-  }
-
   // countは今回の入力で押された鍵盤の数(同時押しなら2以上)。スクラッチ・追加ボタンは
   // 呼び出し側(main.ts)で除外済みの値を渡すこと。
+  // 鍵盤/発狂トラック用のnotesStateとScramble用のscrambleKeyStateの両方を常に更新し、
+  // checkIdle()側で現在選択中のトラックに対応する方だけを見る。
   recordPress(count: number): void {
     this.applyInput(this.notesState, count);
-  }
-
-  // countは今回のスクラッチ回転量(ティック数)。
-  recordScratch(count: number): void {
-    this.applyInput(this.scratchState, count);
+    this.applyInput(this.scrambleKeyState, count);
   }
 
   private applyInput(state: MetricState, delta: number): void {
@@ -117,7 +110,7 @@ export class PlaySessionDetector {
   }
 
   private checkIdle(): void {
-    const state = this.metric === 'scratch' ? this.scratchState : this.notesState;
+    const state = this.metric === 'scrambleKeys' ? this.scrambleKeyState : this.notesState;
     if (state.count < state.threshold || state.lastInputTime === 0) {
       this.setCountdown(null);
       return;

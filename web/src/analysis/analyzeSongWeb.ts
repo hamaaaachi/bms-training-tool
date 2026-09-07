@@ -19,7 +19,6 @@ export function analyzeSongBytes(buffer: Uint8Array, sha256: string): SongAnalys
     bpm,
     avgNps: difficulty.averageNps,
     peakNps: difficulty.peakNps,
-    totalNotes: difficulty.totalNotes,
     chordRatio: difficulty.chordRatio,
     scratchRatio: difficulty.scratchRatio,
     longNoteRatio: difficulty.longNoteRatio,
