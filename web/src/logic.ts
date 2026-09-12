@@ -213,7 +213,7 @@ async function buildDailySuggestions(
     theme === 'delay'
       ? ['ディレイjoy', 'Delay小学校難易度表']
       : theme === 'gachi'
-        ? ['ウーデオシ小学校難易度表']
+        ? ['ウーデオシ小学校難易度表', 'Gachimijoy']
         : [];
   const priorityMatches = new Set<string>();
   if (priorityTableNames.length > 0) {

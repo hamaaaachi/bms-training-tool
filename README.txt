@@ -89,7 +89,8 @@ BMS Training Toolを開く: https://tinyurl.com/bms-training-tool
 上げています。
 
 - ウーデオシ小学校難易度表
-  (https://lets-go-time-hell.github.io/Arm-Shougakkou-table/)
+  (https://lets-go-time-hell.github.io/Arm-Shougakkou-table/) /
+  Gachimijoy (https://su-565fx.github.io/Gachimijoy/)
   (ガチ押し系の参考)
 - ディレイjoy (https://lets-go-time-hell.github.io/Delay-joy-table/) /
   Delay小学校難易度表 (https://wrench616.github.io/Delay/)

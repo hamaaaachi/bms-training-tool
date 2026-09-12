@@ -40,7 +40,7 @@ beatorajaのプレイ実績から今の実力に合った練習曲を毎日提�
 
 このほか、「ガチ押し」「ディレイ」テーマの選曲精度を上げる参考データとして、以下の難易度表も取り込んでいます。BPMやノーツパターンからの自動分類だけでは拾いきれない曲を、これらの表への掲載を手がかりに優先的に拾い上げています。
 
-- [ウーデオシ小学校難易度表](https://lets-go-time-hell.github.io/Arm-Shougakkou-table/) (ガチ押し系の参考)
+- [ウーデオシ小学校難易度表](https://lets-go-time-hell.github.io/Arm-Shougakkou-table/) / [Gachimijoy](https://su-565fx.github.io/Gachimijoy/) (ガチ押し系の参考)
 - [ディレイjoy](https://lets-go-time-hell.github.io/Delay-joy-table/) / [Delay小学校難易度表](https://wrench616.github.io/Delay/) (ディレイ系の参考)
 
 難易度表のデータは `web/scripts/update-tables.js` で取得し、GitHub Actionsで毎日自動更新しています。

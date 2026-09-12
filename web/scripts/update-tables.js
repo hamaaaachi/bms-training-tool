@@ -19,6 +19,11 @@ const TABLE_CONFIGS = [
     name: 'ウーデオシ小学校難易度表',
     headerUrl: 'https://lets-go-time-hell.github.io/Arm-Shougakkou-table/header.json',
   },
+  {
+    key: 'gachimijoy',
+    name: 'Gachimijoy',
+    headerUrl: 'https://su-565fx.github.io/Gachimijoy/header.json',
+  },
 ];
 
 async function fetchJson(url) {
