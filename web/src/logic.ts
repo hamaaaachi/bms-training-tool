@@ -10,6 +10,7 @@ import {
   resolveTableLevel,
 } from './recommend/categoryEngine';
 import type { AnalyzedSong, CategorySuggestion, Theme, Track } from './recommend/categoryEngine';
+import type { SpeedCategory } from './analysis/types';
 import { AnalysisCache } from './analysis/cacheWeb';
 import { analyzeSongBytes } from './analysis/analyzeSongWeb';
 import { computeClearCeiling, decideAutoLevel } from './recommend/clearCeiling';
@@ -209,16 +210,24 @@ async function buildDailySuggestions(
     analyzed.push({ song, analysis });
   }
 
-  const priorityTableNames: readonly string[] =
-    theme === 'delay'
-      ? ['ディレイjoy', 'Delay小学校難易度表']
-      : theme === 'gachi'
-        ? ['ウーデオシ小学校難易度表', 'Gachimijoy']
-        : [];
-  const priorityMatches = new Set<string>();
-  if (priorityTableNames.length > 0) {
-    for (const [sha256, matches] of matchesBySha256) {
-      if (matches.some((m) => priorityTableNames.includes(m.tableName))) priorityMatches.add(sha256);
+  // ガチ押し/ディレイの参考難易度表による強制分類は、選んでいるテーマに関わらず常に
+  // 同じ基準で適用する。以前はtheme==='gachi'/'delay'のときだけ計算していたため、
+  // おまかせ選択時は参考難易度表が無視され、同じ曲でもガチ押し/ディレイを個別に選んだ
+  // ときと表示カテゴリが食い違うことがあった(2026-09-23にユーザー指摘、修正)。
+  const priorityTableNamesByCategory: Partial<Record<SpeedCategory, readonly string[]>> = {
+    gachi: ['ウーデオシ小学校難易度表', 'Gachimijoy'],
+    delay: ['ディレイjoy', 'Delay小学校難易度表'],
+  };
+  const priorityCategoryMap = new Map<string, SpeedCategory>();
+  for (const [sha256, matches] of matchesBySha256) {
+    for (const [category, tableNames] of Object.entries(priorityTableNamesByCategory) as [
+      SpeedCategory,
+      readonly string[],
+    ][]) {
+      if (matches.some((m) => tableNames.includes(m.tableName))) {
+        priorityCategoryMap.set(sha256, category);
+        break;
+      }
     }
   }
 
@@ -226,7 +235,7 @@ async function buildDailySuggestions(
   const picks = pickByTheme(
     analyzed,
     theme,
-    priorityMatches,
+    priorityCategoryMap,
     suggestionHistory.suggestedSet(),
     suggestionHistory.shownTodayTitleSet()
   );

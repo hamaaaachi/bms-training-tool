@@ -130,11 +130,16 @@ function sortByPracticeNeed(list: AnalyzedSong[], alreadySuggested: Set<string>)
 }
 
 // ユーザーが選んだテーマ(ガチ押し/中速/高速/ディレイ)1つに絞って、そのテーマの曲を
-// 最大3曲ピックする。priorityMatches(ディレイjoy/Delay小学校/ウーデオシ小学校など、
-// そのテーマの参考難易度表に載っている曲のsha256集合)に含まれる曲は、BPM/パターンの
-// ヒューリスティック分類が別のテーマだったとしてもこのテーマの候補に含め(参考難易度表への
-// 掲載は「このテーマの譜面である」という強いシグナルのため)、かつ最優先で表示する。
-// その中でもsortByPracticeNeedの優先順位(未提案優先→クリアランプ順)でさらに並べる
+// 最大3曲ピックする。priorityCategoryMap(ディレイjoy/Delay小学校/ウーデオシ小学校/
+// Gachimijoyなど、参考難易度表に載っている曲のsha256→強制分類先カテゴリのマップ)に
+// 含まれる曲は、BPM/パターンのヒューリスティック分類が別のテーマだったとしても、まず
+// この強制分類を表示カテゴリとして適用してから絞り込む(参考難易度表への掲載は「この
+// テーマの譜面である」という強いシグナルのため)。この正規化はテーマを個別に選んだときも
+// おまかせのときも同じ基準で行うため、同じ曲であればどちらを選んでも表示カテゴリが
+// 一致する(2026-09-23にユーザー指摘: 以前はおまかせのときだけ参考難易度表による
+// 強制分類が適用されず、個別選択時と食い違っていた)。
+// 強制分類された曲は、そのテーマの候補内でもsortByPracticeNeedの優先順位
+// (未提案優先→クリアランプ順)の前に最優先で表示する
 // (2026-09-06にユーザー指示: ディレイ/ガチ押しは参考難易度表の掲載曲を優先表示・拾い上げる)。
 // shownTodayTitlesに含まれるタイトルの曲は、その日は一切候補に含めない
 // (sha256が異なる別ファイルとして同じ曲が二重登録されているケースがあり、
@@ -142,7 +147,7 @@ function sortByPracticeNeed(list: AnalyzedSong[], alreadySuggested: Set<string>)
 export function pickByTheme(
   candidates: AnalyzedSong[],
   theme: Theme,
-  priorityMatches: Set<string> = new Set(),
+  priorityCategoryMap: Map<string, SpeedCategory> = new Map(),
   alreadySuggested: Set<string> = new Set(),
   shownTodayTitles: Set<string> = new Set()
 ): AnalyzedSong[] {
@@ -155,19 +160,21 @@ export function pickByTheme(
     return filtered.length > 0 ? filtered : pool;
   };
 
+  // 参考難易度表による強制分類を、テーマの絞り込みより先に全候補へ適用する。
+  const normalizedCandidates = candidates.map((c) => {
+    const forced = priorityCategoryMap.get(c.song.sha256);
+    if (!forced || forced === c.analysis.category) return c;
+    return { ...c, analysis: { ...c.analysis, category: forced } };
+  });
+
   let matching: AnalyzedSong[];
   if (theme === 'omakase') {
-    // おまかせ: カテゴリで絞り込まずごちゃまぜで選ぶ。各曲の表示カテゴリは本来の分類のまま
-    // (2026-09-06にユーザー指示)。
-    matching = excludeShownToday(candidates);
+    // おまかせ: カテゴリで絞り込まずごちゃまぜで選ぶ。表示カテゴリは強制分類反映済みのもの
+    // (2026-09-06にユーザー指示、2026-09-23に強制分類の反映を追加)。
+    matching = excludeShownToday(normalizedCandidates);
   } else {
-    // ヒューリスティック分類がこのテーマの曲、または参考難易度表(priorityMatches)にこの
-    // テーマの表として載っている曲を候補に含める(後者は表示上のカテゴリもこのテーマに揃える)。
-    const themeMatches = candidates.filter((c) => c.analysis.category === theme || priorityMatches.has(c.song.sha256));
-    const normalized = themeMatches.map((c) =>
-      c.analysis.category === theme ? c : { ...c, analysis: { ...c.analysis, category: theme } }
-    );
-    matching = excludeShownToday(normalized);
+    // 強制分類済みのカテゴリがこのテーマと一致する曲を候補に含める。
+    matching = excludeShownToday(normalizedCandidates.filter((c) => c.analysis.category === theme));
 
     // 高速は事前分類(BPM180以上)だけだと候補が0件になりやすいため、その場合だけBPMの
     // 下限をHIGHSPEED_FALLBACK_BPMまで緩めて拾い直す(2026-09-06にユーザー指示)。
@@ -175,7 +182,7 @@ export function pickByTheme(
     // このpick用に上書きする。
     if (theme === 'highspeed' && matching.length === 0) {
       matching = excludeShownToday(
-        candidates
+        normalizedCandidates
           .filter((c) => c.analysis.bpm >= HIGHSPEED_FALLBACK_BPM)
           .map((c) => ({ ...c, analysis: { ...c.analysis, category: 'highspeed' as SpeedCategory } }))
       );
@@ -183,11 +190,11 @@ export function pickByTheme(
   }
 
   const priority = sortByPracticeNeed(
-    matching.filter((c) => priorityMatches.has(c.song.sha256)),
+    matching.filter((c) => priorityCategoryMap.has(c.song.sha256)),
     alreadySuggested
   );
   const rest = sortByPracticeNeed(
-    matching.filter((c) => !priorityMatches.has(c.song.sha256)),
+    matching.filter((c) => !priorityCategoryMap.has(c.song.sha256)),
     alreadySuggested
   );
 
