@@ -1,4 +1,4 @@
-import { idbGet, idbSet, idbDelete } from './idb';
+import { idbGet, idbSet } from './idb';
 
 const HANDLE_KEY = 'beatorajaDirHandle';
 const EXTRA_HANDLES_KEY = 'beatorajaExtraDirHandles';
@@ -16,12 +16,8 @@ export async function getSavedDirHandle(): Promise<FileSystemDirectoryHandle | n
   }
 }
 
-export async function saveDirHandle(handle: FileSystemDirectoryHandle): Promise<void> {
+async function saveDirHandle(handle: FileSystemDirectoryHandle): Promise<void> {
   await idbSet(HANDLE_KEY, handle);
-}
-
-export async function clearSavedDirHandle(): Promise<void> {
-  await idbDelete(HANDLE_KEY);
 }
 
 // 一度許可されたフォルダでも、ブラウザ再起動後などは権限が失われている(または'prompt'状態に
@@ -76,16 +72,6 @@ export async function getSavedExtraDirHandles(): Promise<FileSystemDirectoryHand
 
 async function saveExtraDirHandles(handles: FileSystemDirectoryHandle[]): Promise<void> {
   await idbSet(EXTRA_HANDLES_KEY, handles);
-}
-
-export async function removeExtraDirHandle(handle: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle[]> {
-  const existing = await getSavedExtraDirHandles();
-  const next: FileSystemDirectoryHandle[] = [];
-  for (const h of existing) {
-    if (!(await h.isSameEntry(handle))) next.push(h);
-  }
-  await saveExtraDirHandles(next);
-  return next;
 }
 
 export async function pickExtraChartDir(): Promise<FileSystemDirectoryHandle[] | null> {
@@ -173,7 +159,7 @@ async function getFileHandleAt(root: FileSystemDirectoryHandle, path: string): P
   return dir.getFileHandle(segments[segments.length - 1]);
 }
 
-export async function fileExistsAt(root: FileSystemDirectoryHandle, path: string): Promise<boolean> {
+async function fileExistsAt(root: FileSystemDirectoryHandle, path: string): Promise<boolean> {
   try {
     await getFileHandleAt(root, path);
     return true;
@@ -184,7 +170,7 @@ export async function fileExistsAt(root: FileSystemDirectoryHandle, path: string
 
 // path.isAbsolute相当(Windowsのドライブレター表記 "C:\..." や先頭が "/" のもの)。
 // これらはFile System Access APIのサンドボックス外なので読めない。
-export function isAbsolutePath(p: string): boolean {
+function isAbsolutePath(p: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('/');
 }
 

@@ -75,6 +75,11 @@ async function main() {
     process.exit(1);
   }
 
+  if (previous && JSON.stringify(previous.tables) === JSON.stringify(tables)) {
+    console.log('変更なし(fetchedAtも据え置き)');
+    return;
+  }
+
   const snapshot = { fetchedAt: Date.now(), tables };
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(snapshot));

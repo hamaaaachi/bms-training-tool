@@ -7,7 +7,7 @@ import {
   formatLevelForTrack,
   isThemeValidForTrack,
   pickByTheme,
-  resolveTableLevel,
+  SATELLITE_LEVEL_COUNT,
 } from './recommend/categoryEngine';
 import type { AnalyzedSong, CategorySuggestion, Theme, Track } from './recommend/categoryEngine';
 import type { SpeedCategory } from './analysis/types';
@@ -33,6 +33,15 @@ import {
 const MODE_7K = 7;
 const MAX_ANALYZE_CANDIDATES = 400;
 
+// ガチ押し/ディレイの参考難易度表による強制分類は、選んでいるテーマに関わらず常に
+// 同じ基準で適用する。以前はtheme==='gachi'/'delay'のときだけ計算していたため、
+// おまかせ選択時は参考難易度表が無視され、同じ曲でもガチ押し/ディレイを個別に選んだ
+// ときと表示カテゴリが食い違うことがあった(2026-09-23にユーザー指摘、修正)。
+const priorityTableNamesByCategory: Partial<Record<SpeedCategory, readonly string[]>> = {
+  gachi: ['ウーデオシ小学校難易度表', 'Gachimijoy'],
+  delay: ['ディレイjoy', 'Delay小学校難易度表'],
+};
+
 let cachedLibrary: SongWithScore[] | null = null;
 let cachedPlayerId: string | null = null;
 let cachedDirHandle: FileSystemDirectoryHandle | null = null;
@@ -50,10 +59,6 @@ export function setActiveDirHandle(handle: FileSystemDirectoryHandle): void {
 // 追加の譜面フォルダ一覧。songdata.dbのpath列が絶対パスの曲を解析する際に使う。
 export function setExtraDirHandles(handles: FileSystemDirectoryHandle[]): void {
   cachedExtraDirHandles = handles;
-}
-
-export function getActiveDirHandle(): FileSystemDirectoryHandle | null {
-  return cachedDirHandle;
 }
 
 let analysisCachePromise: Promise<AnalysisCache> | null = null;
@@ -144,15 +149,43 @@ export interface DailyRecommendationResult {
   emptyReason: 'no-library' | 'no-tables' | null;
 }
 
-function matchesLevel(matches: TableEntry[], track: Track, level: number): boolean {
+// matchesの中から、trackの軸(scratch→Scramble難易度表、insane→発狂BMS難易度表、
+// keys→SatelliteまたはStella)での曲のレベルを返す(該当無しはnull)。matchesLevelと
+// estimateClearCeilingで別々に書かれていた「このtrackでは曲がどの表の何番か」の判定を
+// 統一した(2026-10-01)。難易度表には"???"「提案」のような数値でないlevelもあるため、
+// Number(m.level)が有限でないものはスキップする。keysはSatelliteをStellaより優先する
+// 既存の優先順位を保つ。
+function trackLevelOf(matches: TableEntry[], track: Track): number | null {
   if (track === 'scratch') {
-    return matches.some((m) => m.tableName === 'Scramble難易度表' && Number(m.level) === level);
+    for (const m of matches) {
+      if (m.tableName !== 'Scramble難易度表') continue;
+      const level = Number(m.level);
+      if (Number.isFinite(level)) return level;
+    }
+    return null;
   }
   if (track === 'insane') {
-    return matches.some((m) => m.tableName === '発狂BMS難易度表' && Number(m.level) === level);
+    for (const m of matches) {
+      if (m.tableName !== '発狂BMS難易度表') continue;
+      const level = Number(m.level);
+      if (Number.isFinite(level)) return level;
+    }
+    return null;
   }
-  const { tableName, subLevel } = resolveTableLevel(level);
-  return matches.some((m) => m.tableName === tableName && Number(m.level) === subLevel);
+  for (const m of matches) {
+    if (m.tableName === 'Satellite') {
+      const level = Number(m.level);
+      if (Number.isFinite(level)) return level;
+    } else if (m.tableName === 'Stella') {
+      const level = Number(m.level);
+      if (Number.isFinite(level)) return SATELLITE_LEVEL_COUNT + level;
+    }
+  }
+  return null;
+}
+
+function matchesLevel(matches: TableEntry[], track: Track, level: number): boolean {
+  return trackLevelOf(matches, track) === level;
 }
 
 interface DailySuggestionsResult {
@@ -189,35 +222,32 @@ async function buildDailySuggestions(
   }
 
   const analysisCache = await getAnalysisCache();
-  const analyzed: AnalyzedSong[] = [];
   const matchesBySha256 = new Map<string, TableEntry[]>();
-  for (const { song, matches } of candidates) {
-    matchesBySha256.set(song.sha256, matches);
-    // song.pathが絶対パス(bmsroot設定で外部フォルダを使っている場合)でも、
-    // 追加で許可された譜面フォルダ(cachedExtraDirHandles)から探せることがある。
-    // 過去に解析済み(キャッシュ済み)でも、その後ファイルが削除/移動されていることがある。
-    if (!(await fileExistsAtAny(root, cachedExtraDirHandles, song.path))) continue;
-    let analysis = analysisCache.get(song.sha256);
-    if (!analysis) {
-      try {
-        const bytes = await readFileAtAny(root, cachedExtraDirHandles, song.path);
-        analysis = analyzeSongBytes(bytes, song.sha256);
-        analysisCache.set(analysis);
-      } catch {
-        continue; // ファイルが読めない/壊れている譜面はスキップ
+  // ファイル存在確認/解析は候補ごとに独立しているため並行で処理する(最大400件を
+  // 順番にawaitすると遅いため。2026-10-01)。matchesBySha256は全候補分、各非同期関数の
+  // 最初のawaitより前(同期区間)で登録されるので、Promise.allの実行順に関わらず揃う。
+  const analyzedResults = await Promise.all(
+    candidates.map(async ({ song, matches }): Promise<AnalyzedSong | null> => {
+      matchesBySha256.set(song.sha256, matches);
+      // song.pathが絶対パス(bmsroot設定で外部フォルダを使っている場合)でも、
+      // 追加で許可された譜面フォルダ(cachedExtraDirHandles)から探せることがある。
+      // 過去に解析済み(キャッシュ済み)でも、その後ファイルが削除/移動されていることがある。
+      if (!(await fileExistsAtAny(root, cachedExtraDirHandles, song.path))) return null;
+      let analysis = analysisCache.get(song.sha256);
+      if (!analysis) {
+        try {
+          const bytes = await readFileAtAny(root, cachedExtraDirHandles, song.path);
+          analysis = analyzeSongBytes(bytes, song.sha256);
+          analysisCache.set(analysis);
+        } catch {
+          return null; // ファイルが読めない/壊れている譜面はスキップ
+        }
       }
-    }
-    analyzed.push({ song, analysis });
-  }
+      return { song, analysis };
+    })
+  );
+  const analyzed: AnalyzedSong[] = analyzedResults.filter((a): a is AnalyzedSong => a !== null);
 
-  // ガチ押し/ディレイの参考難易度表による強制分類は、選んでいるテーマに関わらず常に
-  // 同じ基準で適用する。以前はtheme==='gachi'/'delay'のときだけ計算していたため、
-  // おまかせ選択時は参考難易度表が無視され、同じ曲でもガチ押し/ディレイを個別に選んだ
-  // ときと表示カテゴリが食い違うことがあった(2026-09-23にユーザー指摘、修正)。
-  const priorityTableNamesByCategory: Partial<Record<SpeedCategory, readonly string[]>> = {
-    gachi: ['ウーデオシ小学校難易度表', 'Gachimijoy'],
-    delay: ['ディレイjoy', 'Delay小学校難易度表'],
-  };
   const priorityCategoryMap = new Map<string, SpeedCategory>();
   for (const [sha256, matches] of matchesBySha256) {
     for (const [category, tableNames] of Object.entries(priorityTableNamesByCategory) as [
@@ -236,7 +266,7 @@ async function buildDailySuggestions(
     analyzed,
     theme,
     priorityCategoryMap,
-    suggestionHistory.suggestedSet(),
+    suggestionHistory.suggestedCounts(),
     suggestionHistory.shownTodayTitleSet()
   );
   suggestionHistory.record(picks.map(({ song }) => ({ sha256: song.sha256, title: song.title })));
@@ -260,34 +290,8 @@ async function estimateClearCeiling(playerId: string, track: Track): Promise<num
   for (const song of library) {
     if (song.playcount <= 0) continue;
     const matches = difficultyTables.lookup(song.md5, song.sha256);
-    if (track === 'scratch') {
-      for (const m of matches) {
-        if (m.tableName === 'Scramble難易度表') {
-          samples.push({ level: Number(m.level), playcount: song.playcount, clear: song.clear });
-          break;
-        }
-      }
-      continue;
-    }
-    if (track === 'insane') {
-      for (const m of matches) {
-        if (m.tableName === '発狂BMS難易度表') {
-          samples.push({ level: Number(m.level), playcount: song.playcount, clear: song.clear });
-          break;
-        }
-      }
-      continue;
-    }
-    for (const m of matches) {
-      if (m.tableName === 'Satellite') {
-        samples.push({ level: Number(m.level), playcount: song.playcount, clear: song.clear });
-        break;
-      }
-      if (m.tableName === 'Stella') {
-        samples.push({ level: 13 + Number(m.level), playcount: song.playcount, clear: song.clear });
-        break;
-      }
-    }
+    const level = trackLevelOf(matches, track);
+    if (level !== null) samples.push({ level, playcount: song.playcount, clear: song.clear });
   }
   return computeClearCeiling(samples);
 }

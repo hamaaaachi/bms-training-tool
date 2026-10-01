@@ -37,8 +37,8 @@ export class SuggestionHistory {
     return history;
   }
 
-  suggestedSet(): Set<string> {
-    return new Set(Object.keys(this.data.suggested));
+  suggestedCounts(): ReadonlyMap<string, number> {
+    return new Map(Object.entries(this.data.suggested));
   }
 
   shownTodayTitleSet(): Set<string> {

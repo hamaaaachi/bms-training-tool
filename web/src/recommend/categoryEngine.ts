@@ -110,23 +110,28 @@ export function isThemeValidForTrack(theme: Theme, track: Track): boolean {
 
 const SUGGESTIONS_PER_THEME = 3;
 
-// 「練習の必要度」順に並べる: まだ提案したことが無い(alreadySuggestedに含まれない)曲を
+// 「練習の必要度」順に並べる: 提案された回数(suggestionCounts、無ければ0)が少ない曲を
 // 最優先し、その中でNo play→Failed→Easy→…とクリアランプが低いほど優先度が高い
-// (ClearTypeName配列のインデックス=score.clearの値そのもの)。未提案の曲を使い切って
-// 初めて、提案済みの曲(同じくクリアランプ順)に進む。これにより、あるクリアランプの
-// 未提案曲が尽きるまでは次のクリアランプに進まないが、尽きたら必ず次のクリアランプの
-// 未提案曲に進むため、No playだけが無限に出続けることもない(2026-09-06にユーザー指示:
-// 「未提案の曲を全部出し切ってから、次のクリアランプに進む」)。
+// (ClearTypeName配列のインデックス=score.clearの値そのもの)。これにより、1巡目は
+// 提案回数0の曲をクリアランプの低い順に出し切り、出し切ったら2巡目として提案回数1の曲に
+// 進む…という形になる(2026-10-01に修正: 以前は提案済みか否かのフラグ
+// (seen/unseen)で見ていたため、各レベルの曲を一巡提案し終えると全曲が「提案済み」になり、
+// その後はクリアランプ順だけが効いて同じ低クリアランプの曲ばかり無限に出続けていた)。
 // 同条件の曲同士はプレイ回数が少ない方を優先し、それでも決まらなければランダムに散らす。
-function sortByPracticeNeed(list: AnalyzedSong[], alreadySuggested: Set<string>): AnalyzedSong[] {
-  return [...list].sort((a, b) => {
-    const aSeen = alreadySuggested.has(a.song.sha256) ? 1 : 0;
-    const bSeen = alreadySuggested.has(b.song.sha256) ? 1 : 0;
-    if (aSeen !== bSeen) return aSeen - bSeen;
-    if (a.song.clear !== b.song.clear) return a.song.clear - b.song.clear;
-    if (a.song.playcount !== b.song.playcount) return a.song.playcount - b.song.playcount;
-    return Math.random() - 0.5;
+function sortByPracticeNeed(
+  list: AnalyzedSong[],
+  suggestionCounts: ReadonlyMap<string, number>
+): AnalyzedSong[] {
+  const withRandomKey = list.map((item) => ({ item, r: Math.random() }));
+  withRandomKey.sort((a, b) => {
+    const aCount = suggestionCounts.get(a.item.song.sha256) ?? 0;
+    const bCount = suggestionCounts.get(b.item.song.sha256) ?? 0;
+    if (aCount !== bCount) return aCount - bCount;
+    if (a.item.song.clear !== b.item.song.clear) return a.item.song.clear - b.item.song.clear;
+    if (a.item.song.playcount !== b.item.song.playcount) return a.item.song.playcount - b.item.song.playcount;
+    return a.r - b.r;
   });
+  return withRandomKey.map(({ item }) => item);
 }
 
 // ユーザーが選んだテーマ(ガチ押し/中速/高速/ディレイ)1つに絞って、そのテーマの曲を
@@ -148,7 +153,7 @@ export function pickByTheme(
   candidates: AnalyzedSong[],
   theme: Theme,
   priorityCategoryMap: Map<string, SpeedCategory> = new Map(),
-  alreadySuggested: Set<string> = new Set(),
+  suggestionCounts: ReadonlyMap<string, number> = new Map(),
   shownTodayTitles: Set<string> = new Set()
 ): AnalyzedSong[] {
   // 候補自体はあるのに、その日のうちに全部出し切っていて0件になった場合は「一巡した」と
@@ -191,11 +196,11 @@ export function pickByTheme(
 
   const priority = sortByPracticeNeed(
     matching.filter((c) => priorityCategoryMap.has(c.song.sha256)),
-    alreadySuggested
+    suggestionCounts
   );
   const rest = sortByPracticeNeed(
     matching.filter((c) => !priorityCategoryMap.has(c.song.sha256)),
-    alreadySuggested
+    suggestionCounts
   );
 
   const picks: AnalyzedSong[] = [];

@@ -4,11 +4,12 @@ import type { TableEntry } from './types';
 // ブラウザからは主要な難易度表サイト(stellabms.xyz、発狂BMS難易度表など)へ直接fetchできない
 // (CORSヘッダーが無いため)。そのため、GitHub Actionsで定期的に全表を取得しこのファイルへ
 // スナップショットとして書き出し、同一オリジンの静的ファイルとして配信している
-// (2026-09-06にユーザー指示でWeb版へ移行した際に判明・対応。scripts/update-tables.tsと
+// (2026-09-06にユーザー指示でWeb版へ移行した際に判明・対応。web/scripts/update-tables.jsと
 // .github/workflows/update-tables.ymlを参照)。
+// fetchは常に実行し、ETagによるHTTP再検証(304)にまかせる。GitHub Pages配信なので
+// 変更が無ければ軽量。失敗時のみIndexedDBキャッシュへフォールバックする。
 const SNAPSHOT_URL = './tables-snapshot.json';
 const CACHE_KEY = 'tablesSnapshotCache';
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 1日(スナップショット自体もCIで毎日更新される)
 
 interface RawScoreEntry {
   md5?: string;
@@ -57,14 +58,8 @@ export class DifficultyTables {
       // キャッシュなし
     }
 
-    const isFresh = !!cached && Date.now() - cached.fetchedAt < CACHE_MAX_AGE_MS;
-    if (isFresh && cached) {
-      this.buildIndex(cached.tables);
-      return;
-    }
-
     try {
-      const res = await fetch(SNAPSHOT_URL, { cache: 'no-store' });
+      const res = await fetch(SNAPSHOT_URL, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const snapshot = (await res.json()) as TablesSnapshot;
       this.buildIndex(snapshot.tables);

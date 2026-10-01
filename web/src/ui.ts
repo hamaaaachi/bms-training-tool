@@ -4,7 +4,16 @@ import type { DailyRecommendationResult, AutoStartResult } from './logic';
 import * as logicModule from './logic';
 import type { KeystrokeHistory } from './keystroke/types';
 import type { Theme, Track } from './recommend/categoryEngine';
-import { themeOptionsForTrack } from './recommend/categoryEngine';
+import {
+  formatLevelForTrack,
+  INSANE_MAX_LEVEL,
+  INSANE_MIN_LEVEL,
+  MAX_TABLE_LEVEL,
+  MIN_TABLE_LEVEL,
+  SCRAMBLE_MAX_LEVEL,
+  SCRAMBLE_MIN_LEVEL,
+  themeOptionsForTrack,
+} from './recommend/categoryEngine';
 import type { Lang } from './session/settingsWeb';
 import { getSettings } from './logic';
 import { pickBeatorajaDir, getSavedDirHandle, ensurePermission } from './browser/fsAccess';
@@ -343,44 +352,23 @@ function buildCategoryCard(suggestion: DailyRecommendationResult['suggestions'][
   return card;
 }
 
-const KEYS_LEVEL_OPTION_COUNT = 26;
-function formatKeysLevelLabel(level: number): string {
-  return level < 13 ? `sl${level}` : `st${level - 13}`;
-}
-
-const INSANE_MIN_LEVEL = 1;
-const INSANE_MAX_LEVEL = 25;
-function formatInsaneLevelLabel(level: number): string {
-  return `★${level}`;
-}
-
-const SCRATCH_LEVEL_MIN = -1;
-const SCRATCH_LEVEL_MAX = 12;
-function formatScratchLevelLabel(level: number): string {
-  return `SB${level}`;
-}
-
 interface LevelOption {
   value: number;
   label: string;
 }
 
+// レベルの範囲/表示ラベルはcategoryEngine.tsの定数・formatLevelForTrackと重複して
+// 持たないよう、そちらをそのまま使う(2026-10-01)。
 function levelOptionsFor(track: Track): LevelOption[] {
+  const [min, max] =
+    track === 'scratch'
+      ? [SCRAMBLE_MIN_LEVEL, SCRAMBLE_MAX_LEVEL]
+      : track === 'insane'
+        ? [INSANE_MIN_LEVEL, INSANE_MAX_LEVEL]
+        : [MIN_TABLE_LEVEL, MAX_TABLE_LEVEL];
   const opts: LevelOption[] = [];
-  if (track === 'scratch') {
-    for (let level = SCRATCH_LEVEL_MIN; level <= SCRATCH_LEVEL_MAX; level++) {
-      opts.push({ value: level, label: formatScratchLevelLabel(level) });
-    }
-    return opts;
-  }
-  if (track === 'insane') {
-    for (let level = INSANE_MIN_LEVEL; level <= INSANE_MAX_LEVEL; level++) {
-      opts.push({ value: level, label: formatInsaneLevelLabel(level) });
-    }
-    return opts;
-  }
-  for (let level = 0; level < KEYS_LEVEL_OPTION_COUNT; level++) {
-    opts.push({ value: level, label: formatKeysLevelLabel(level) });
+  for (let level = min; level <= max; level++) {
+    opts.push({ value: level, label: formatLevelForTrack(track, level) });
   }
   return opts;
 }
@@ -442,6 +430,11 @@ function setupRecommender(): (() => void) | null {
   let lastResult: DailyRecommendationResult | null = null;
   let lastBeatorajaDirName: string | null | undefined = undefined;
   let currentExtraChartCount = 0;
+  // refresh/トラック変更/上限変更/ウォーミングアップ/自動進行が同時に走ったとき、後から
+  // 発火した方の結果が先に発火した方より先に届いて、さらに古い結果で上書きされてしまう
+  // 競合を防ぐ(2026-10-01)。開始したリクエストがこの時点の番号と一致する場合だけ
+  // renderSuggestions/setControlsEnabledを行う。
+  let requestSeq = 0;
 
   const updateExtraChartStatus = (): void => {
     extraChartStatus.textContent = currentExtraChartCount > 0 ? t('extraChartStatus', { count: currentExtraChartCount }) : '';
@@ -583,15 +576,28 @@ function setupRecommender(): (() => void) | null {
     levelHeadingEl.textContent = t('errorPrefix', { message: err instanceof Error ? err.message : String(err) });
   };
 
+  // 開始時にrequestSeqを1つ進めてseqとして確保し、そのリクエストの結果が届いた時点でも
+  // まだ最新(seq === requestSeq)であればrenderSuggestions/setControlsEnabledを行う。
+  // 別のリクエストが後から始まっていれば(requestSeqが進んでいれば)古い結果は無視する。
+  const runRequest = (promise: Promise<DailyRecommendationResult>): void => {
+    const seq = ++requestSeq;
+    setControlsEnabled(false);
+    promise
+      .then((result) => {
+        if (seq === requestSeq) renderSuggestions(result);
+      })
+      .catch((err) => {
+        if (seq === requestSeq) showError(err);
+      })
+      .finally(() => {
+        if (seq === requestSeq) setControlsEnabled(true);
+      });
+  };
+
   const refresh = (playerId: string): void => {
     if (!playerId) return;
-    setControlsEnabled(false);
     levelHeadingEl.textContent = t('analyzing');
-    logicModule
-      .refresh(playerId, currentTrack, Number(levelSelect.value), themeSelect.value as Theme)
-      .then(renderSuggestions)
-      .catch(showError)
-      .finally(() => setControlsEnabled(true));
+    runRequest(logicModule.refresh(playerId, currentTrack, Number(levelSelect.value), themeSelect.value as Theme));
   };
 
   playerSelect.addEventListener('change', () => refresh(playerSelect.value));
@@ -604,24 +610,14 @@ function setupRecommender(): (() => void) | null {
     if (!playerId) return;
     const track = trackSelect.value as Track;
     currentTrack = track;
-    setControlsEnabled(false);
     levelHeadingEl.textContent = t('analyzingShort');
-    logicModule
-      .switchTrack(playerId, track)
-      .then(renderSuggestions)
-      .catch(showError)
-      .finally(() => setControlsEnabled(true));
+    runRequest(logicModule.switchTrack(playerId, track));
   });
 
   ceilingSelect.addEventListener('change', () => {
-    setControlsEnabled(false);
     levelHeadingEl.textContent = t('analyzingShort');
     const value = ceilingSelect.value === '' ? null : Number(ceilingSelect.value);
-    logicModule
-      .setCeilingOverride(currentTrack, value)
-      .then(renderSuggestions)
-      .catch(showError)
-      .finally(() => setControlsEnabled(true));
+    runRequest(logicModule.setCeilingOverride(currentTrack, value));
   });
 
   floorSelect.addEventListener('change', () => {
@@ -634,9 +630,8 @@ function setupRecommender(): (() => void) | null {
   });
 
   warmupBtn.addEventListener('click', () => {
-    setControlsEnabled(false);
     levelHeadingEl.textContent = t('analyzingShort');
-    logicModule.applyWarmup().then(renderSuggestions).catch(showError).finally(() => setControlsEnabled(true));
+    runRequest(logicModule.applyWarmup());
   });
 
   autoAdvanceCheckbox.addEventListener('change', () => {
@@ -645,8 +640,12 @@ function setupRecommender(): (() => void) | null {
   logicModule.setAutoAdvance(autoAdvanceCheckbox.checked);
 
   logicModule.onAutoAdvance((result) => {
+    // 自動進行はコールバック経由で届くため、進行中の手動リクエスト(リロード/トラック変更
+    // など)がこれより古い結果で上書きしてしまわないよう、ここでも番号を進めて最新扱いにする。
+    requestSeq += 1;
     advanceCountdown.hidden = true;
     renderSuggestions(result);
+    setControlsEnabled(true);
   });
 
   logicModule.onCountdownChange((secondsLeft) => {
@@ -853,6 +852,17 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
   let hidActive = false;
   let hidDeviceName: string | null = null;
 
+  // 打鍵合計の反映はHID経路(コールバック)とGamepad API経路(flushDelta)の両方から
+  // 行われるが、以前はflushDelta側が月間合計(currentMonthTotal)を更新していなかった
+  // ため、HID未接続時は本日のカウントだけ増え、今月の合計がずれていた。1箇所にまとめて
+  // 両方から使う(2026-10-01)。
+  function applyKeystrokeTotal(total: number): void {
+    todayCount.textContent = String(total);
+    currentMonthTotal += total - currentTodayCount;
+    currentTodayCount = total;
+    monthCount.textContent = String(currentMonthTotal);
+  }
+
   function renderStatus(): void {
     if (hidActive) {
       status.classList.add('connected');
@@ -875,12 +885,7 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
 
   const controllerReader = new ControllerWebHidReader(
     (count) => {
-      logicModule.addKeystrokeDelta(count).then((total) => {
-        todayCount.textContent = String(total);
-        currentMonthTotal += total - currentTodayCount;
-        currentTodayCount = total;
-        monthCount.textContent = String(currentMonthTotal);
-      });
+      logicModule.addKeystrokeDelta(count).then(applyKeystrokeTotal);
     },
     (ticks) => {
       logicModule.addScratchDelta(ticks).then((total) => {
@@ -938,7 +943,7 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
         prevPressed.set(key, btn.pressed);
       });
     }
-    if (!hidActive) {
+    if (!hidActive && connectedNames.join(',') !== lastConnectedNames.join(',')) {
       lastConnectedNames = connectedNames;
       renderStatus();
     }
@@ -950,9 +955,7 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
     if (hidActive || pendingDelta <= 0) return;
     const delta = pendingDelta;
     pendingDelta = 0;
-    logicModule.addKeystrokeDelta(delta).then((total) => {
-      todayCount.textContent = String(total);
-    });
+    logicModule.addKeystrokeDelta(delta).then(applyKeystrokeTotal);
   }
   setInterval(flushDelta, 1000);
 
@@ -979,8 +982,14 @@ function setupKeystrokeAndScratchCounters(): (() => void) | null {
     }
 
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const counts = Object.values(history);
-    const maxCount = Math.max(1, ...counts);
+    // 色の濃さは今月の中での相対値にする(以前は全期間のhistoryから最大値を取っていたため、
+    // 過去に特別多く打鍵した日があると今月のマスが常に薄くなってしまっていた。2026-10-01)。
+    const monthCounts: number[] = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      monthCounts.push(history[dateStr] ?? 0);
+    }
+    const maxCount = Math.max(1, ...monthCounts);
     let monthTotal = 0;
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
