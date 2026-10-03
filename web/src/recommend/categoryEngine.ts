@@ -143,8 +143,8 @@ function sortByPracticeNeed(
 // おまかせのときも同じ基準で行うため、同じ曲であればどちらを選んでも表示カテゴリが
 // 一致する(2026-09-23にユーザー指摘: 以前はおまかせのときだけ参考難易度表による
 // 強制分類が適用されず、個別選択時と食い違っていた)。
-// 強制分類された曲は、そのテーマの候補内でもsortByPracticeNeedの優先順位
-// (未提案優先→クリアランプ順)の前に最優先で表示する
+// 強制分類された曲は、(おまかせではなく)テーマを個別に選んだときに限り、その候補内でも
+// sortByPracticeNeedの優先順位(未提案優先→クリアランプ順)の前に最優先で表示する
 // (2026-09-06にユーザー指示: ディレイ/ガチ押しは参考難易度表の掲載曲を優先表示・拾い上げる)。
 // shownTodayTitlesに含まれるタイトルの曲は、その日は一切候補に含めない
 // (sha256が異なる別ファイルとして同じ曲が二重登録されているケースがあり、
@@ -194,15 +194,6 @@ export function pickByTheme(
     }
   }
 
-  const priority = sortByPracticeNeed(
-    matching.filter((c) => priorityCategoryMap.has(c.song.sha256)),
-    suggestionCounts
-  );
-  const rest = sortByPracticeNeed(
-    matching.filter((c) => !priorityCategoryMap.has(c.song.sha256)),
-    suggestionCounts
-  );
-
   const picks: AnalyzedSong[] = [];
   const pickedTitles = new Set<string>();
   const addFrom = (pool: AnalyzedSong[]): void => {
@@ -213,7 +204,21 @@ export function pickByTheme(
       pickedTitles.add(c.song.title);
     }
   };
-  addFrom(priority);
-  addFrom(rest);
+  if (theme === 'omakase') {
+    // おまかせでは参考難易度表の掲載曲を優先せず、全候補をまとめて練習必要度順に並べる
+    // (2026-10-03にユーザー指摘: ガチ押し/ディレイが優先されすぎていた)。
+    addFrom(sortByPracticeNeed(matching, suggestionCounts));
+  } else {
+    const priority = sortByPracticeNeed(
+      matching.filter((c) => priorityCategoryMap.has(c.song.sha256)),
+      suggestionCounts
+    );
+    const rest = sortByPracticeNeed(
+      matching.filter((c) => !priorityCategoryMap.has(c.song.sha256)),
+      suggestionCounts
+    );
+    addFrom(priority);
+    addFrom(rest);
+  }
   return picks;
 }
