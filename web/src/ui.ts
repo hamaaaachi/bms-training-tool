@@ -6,13 +6,9 @@ import type { KeystrokeHistory } from './keystroke/types';
 import type { Theme, Track } from './recommend/categoryEngine';
 import {
   formatLevelForTrack,
-  INSANE_MAX_LEVEL,
-  INSANE_MIN_LEVEL,
-  MAX_TABLE_LEVEL,
-  MIN_TABLE_LEVEL,
-  SCRAMBLE_MAX_LEVEL,
-  SCRAMBLE_MIN_LEVEL,
+  levelRangeForTrack,
   themeOptionsForTrack,
+  TRACKS,
 } from './recommend/categoryEngine';
 import type { Lang } from './session/settingsWeb';
 import { getSettings } from './logic';
@@ -60,6 +56,8 @@ interface StringTable {
   categoryDelay: string;
   categoryOmakase: string;
   trackInsane: string;
+  trackInsane2: string;
+  trackInsaneEasy: string;
   ceilingAutoOption: string;
   statLevelBpm: string;
   statNotes: string;
@@ -125,6 +123,8 @@ const STRINGS: Record<Lang, StringTable> = {
     categoryDelay: 'ディレイ',
     categoryOmakase: 'おまかせ',
     trackInsane: '発狂',
+    trackInsane2: '第2発狂',
+    trackInsaneEasy: '発狂推定 EASY',
     ceilingAutoOption: '自動(クリアランプから推定)',
     statLevelBpm: 'レベル: {level}  BPM: {bpm}',
     statNotes: 'ノーツ数: {notes}',
@@ -189,6 +189,8 @@ const STRINGS: Record<Lang, StringTable> = {
     categoryDelay: 'Delay',
     categoryOmakase: 'Omakase (mixed)',
     trackInsane: 'Insane',
+    trackInsane2: '2nd Insane',
+    trackInsaneEasy: 'Insane Estimate EASY',
     ceilingAutoOption: 'Auto (estimated from clear lamps)',
     statLevelBpm: 'Level: {level}  BPM: {bpm}',
     statNotes: 'Notes: {notes}',
@@ -252,6 +254,8 @@ const STRINGS: Record<Lang, StringTable> = {
     categoryDelay: '딜레이',
     categoryOmakase: '오마카세(뒤섞기)',
     trackInsane: '인세인',
+    trackInsane2: '제2인세인',
+    trackInsaneEasy: '인세인 추정 EASY',
     ceilingAutoOption: '자동(클리어 램프로 추정)',
     statLevelBpm: '레벨: {level}  BPM: {bpm}',
     statNotes: '노트 수: {notes}',
@@ -360,12 +364,7 @@ interface LevelOption {
 // レベルの範囲/表示ラベルはcategoryEngine.tsの定数・formatLevelForTrackと重複して
 // 持たないよう、そちらをそのまま使う(2026-10-01)。
 function levelOptionsFor(track: Track): LevelOption[] {
-  const [min, max] =
-    track === 'scratch'
-      ? [SCRAMBLE_MIN_LEVEL, SCRAMBLE_MAX_LEVEL]
-      : track === 'insane'
-        ? [INSANE_MIN_LEVEL, INSANE_MAX_LEVEL]
-        : [MIN_TABLE_LEVEL, MAX_TABLE_LEVEL];
+  const [min, max] = levelRangeForTrack(track);
   const opts: LevelOption[] = [];
   for (let level = min; level <= max; level++) {
     opts.push({ value: level, label: formatLevelForTrack(track, level) });
@@ -375,6 +374,8 @@ function levelOptionsFor(track: Track): LevelOption[] {
 
 function trackLabel(track: Track): string {
   if (track === 'insane') return t('trackInsane');
+  if (track === 'insane2') return t('trackInsane2');
+  if (track === 'insaneEasy') return t('trackInsaneEasy');
   if (track === 'scratch') return 'Scramble';
   return 'Satellite/Stella';
 }
@@ -443,7 +444,7 @@ function setupRecommender(): (() => void) | null {
   const populateTrackOptions = (): void => {
     const selected = trackSelect.value;
     trackSelect.innerHTML = '';
-    for (const track of ['keys', 'insane', 'scratch'] as Track[]) {
+    for (const track of TRACKS) {
       const opt = document.createElement('option');
       opt.value = track;
       opt.textContent = trackLabel(track);

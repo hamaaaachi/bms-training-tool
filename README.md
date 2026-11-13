@@ -14,7 +14,7 @@ beatorajaのプレイ実績から今の実力に合った練習曲を毎日提�
 
 ## できること
 
-- Satellite / Stella・発狂BMS難易度表・Scramble難易度表の7key譜面から、テーマ(ガチ押し/中速/高速/ディレイ/おまかせ)ごとに3曲提案
+- Satellite / Stella・発狂BMS難易度表・第2発狂難易度表・発狂BMS難度推定表 EASY・Scramble難易度表の7key譜面から、テーマ(ガチ押し/中速/高速/ディレイ/おまかせ)ごとに3曲提案
   - 「中速」はBPM130-165付近の曲を優先しますが、ガチ押し/ディレイ/高速(BPM180以上)のどれにも当てはまらない曲は消去法で中速に含まれるため、実際にはBPMの幅が比較的広い曲が選ばれることがあります
 - 同じ条件なら、未プレイ→Failed→Easy→…の順に練習の必要度が高い曲を優先して選ぶ。さらに同条件ならプレイ回数が少ない曲を優先する
 - 自分のクリアランプから「そろそろ全滅し始めるレベル(上限)」を検出し、1曲プレイするたびにその上限に向けて自動でレベルを上げていく。上限は自分で固定することもできる
@@ -36,6 +36,8 @@ beatorajaのプレイ実績から今の実力に合った練習曲を毎日提�
 
 - [Satellite](https://stellabms.xyz/sl/) / [Stella](https://stellabms.xyz/st/)
 - [発狂BMS難易度表](https://mirai-yokohama.sakura.ne.jp/bms/)
+- [第2発狂難易度表](http://bmsnormal2.syuriken.jp/table_insane.html)
+- [発狂BMS難度推定表](http://walkure.net/hakkyou/for_glassist/bms/)(EASY)
 - [Scramble難易度表](https://egret9.github.io/Scramble/)
 
 このほか、「ガチ押し」「ディレイ」テーマの選曲精度を上げる参考データとして、以下の難易度表も取り込んでいます。BPMやノーツパターンからの自動分類だけでは拾いきれない曲を、これらの表への掲載を手がかりに優先的に拾い上げています。

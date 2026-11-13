@@ -1,9 +1,8 @@
 import { idbGet, idbSet } from '../browser/idb';
-import { clampLevelForTrack, INSANE_MIN_LEVEL, SCRAMBLE_MIN_LEVEL } from '../recommend/categoryEngine';
+import { clampLevelForTrack, levelRangeForTrack, TRACKS } from '../recommend/categoryEngine';
 import type { Theme, Track } from '../recommend/categoryEngine';
 import { todayString } from '../util/date';
 
-const TRACKS: Track[] = ['keys', 'insane', 'scratch'];
 const KEY = 'settings';
 
 // UIの表示言語(固定文言のみ)。曲名/アーティスト名/クリアランプ名などのデータはそのまま。
@@ -30,23 +29,14 @@ export interface SettingsData {
   stepProgress: Record<Track, number>;
 }
 
-const DEFAULT_LEVELS: Record<Track, number> = {
-  keys: 0,
-  insane: INSANE_MIN_LEVEL,
-  scratch: SCRAMBLE_MIN_LEVEL,
-};
+function perTrack<T>(value: (track: Track) => T): Record<Track, T> {
+  return Object.fromEntries(TRACKS.map((track) => [track, value(track)])) as Record<Track, T>;
+}
 
-const DEFAULT_CEILING_OVERRIDES: Record<Track, number | null> = {
-  keys: null,
-  insane: null,
-  scratch: null,
-};
-
-const DEFAULT_STEP_PROGRESS: Record<Track, number> = {
-  keys: 0,
-  insane: 0,
-  scratch: 0,
-};
+// 各トラックの初期レベルはそのトラックの最低レベル。
+const DEFAULT_LEVELS: Record<Track, number> = perTrack((track) => levelRangeForTrack(track)[0]);
+const DEFAULT_CEILING_OVERRIDES: Record<Track, number | null> = perTrack(() => null);
+const DEFAULT_STEP_PROGRESS: Record<Track, number> = perTrack(() => 0);
 
 function defaultSettings(): SettingsData {
   return {

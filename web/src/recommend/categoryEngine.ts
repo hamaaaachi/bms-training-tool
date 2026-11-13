@@ -18,7 +18,11 @@ export interface CategorySuggestion {
 // 練習の系統。Satellite/Stella(連続軸)・発狂(発狂BMS難易度表独自の軸)・Scramble
 // (Scramble難易度表独自の軸)は、2026-09-06にユーザーから明示された通りそれぞれ難易度を
 // リンクさせない独立したトラックとして扱う。
-export type Track = 'keys' | 'insane' | 'scratch';
+// 'insane2'(第2発狂難易度表)・'insaneEasy'(発狂BMS難度推定表 EASY)は2026-11-13に
+// ユーザー指示で追加。発狂BMS難易度表とは格付けの基準が異なるため、同じ「発狂」でも
+// レベル/上限/レベルアップ進捗をリンクさせない独立したトラックとして扱う。
+export type Track = 'keys' | 'insane' | 'insane2' | 'insaneEasy' | 'scratch';
+export const TRACKS: readonly Track[] = ['keys', 'insane', 'insane2', 'insaneEasy', 'scratch'];
 
 // Satellite(sl0-12)の次にStella(st0-12)が続く1本のレベル軸として扱う(Satellite/Stella
 // トラック)。2026-09-06にユーザーから指摘: sl12の次はst0であり、両表は別トラックではなく
@@ -80,16 +84,111 @@ export function formatScrambleLevel(level: number): string {
   return `SB${level}`;
 }
 
+// 第2発狂トラック: 第2発狂難易度表(▼0-24)独自の軸。level_orderは
+// ["0-","0",...,"24","?"](2026-11-13にinsane_header.jsonで確認済み)。"0-"(0未満)・
+// "?"(未格付け)は数値レベルではないため軸には含めない。
+export const INSANE2_MIN_LEVEL = 0;
+export const INSANE2_MAX_LEVEL = 24;
+
+// 発狂推定EASYトラック: 発狂BMS難度推定表 EASY(E★)。levelは"12.00...12.50"のような
+// 0.5刻みの推定値の範囲文字列で、両端は"...0.00"・"24.50..."、未推定は"-"
+// (2026-11-13にheader_json.cgi?lamp=easy...で確認済み)。0.5刻みのままだと49段階に
+// なり細かすぎるため、範囲の下限の整数部を取ってE★0-24の整数レベルに丸める
+// ("...0.00"は0、"24.50..."は24に含める)。
+export const INSANE_EASY_MIN_LEVEL = 0;
+export const INSANE_EASY_MAX_LEVEL = 24;
+
+function parseEstimateRangeLevel(raw: string): number | null {
+  const m = /^([\d.]*)\.\.\.([\d.]*)$/.exec(raw);
+  if (!m) return null;
+  if (m[1] === '') return INSANE_EASY_MIN_LEVEL; // "...0.00"
+  const lower = Number(m[1]);
+  return Number.isFinite(lower) ? Math.floor(lower) : null;
+}
+
+function parseIntegerLevel(raw: string): number | null {
+  // "0-"や"???"などを数値扱いしないよう、整数表記のみ受け付ける(Number("")が0になる点にも注意)。
+  if (!/^-?\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+// Satellite/Stella以外の、1つの難易度表だけで軸が決まるトラックの定義。
+interface SingleTableTrack {
+  tableName: string;
+  min: number;
+  max: number;
+  format: (level: number) => string;
+  parseLevel: (raw: string) => number | null;
+}
+
+const SINGLE_TABLE_TRACKS: Record<Exclude<Track, 'keys'>, SingleTableTrack> = {
+  insane: {
+    tableName: '発狂BMS難易度表',
+    min: INSANE_MIN_LEVEL,
+    max: INSANE_MAX_LEVEL,
+    format: formatInsaneLevel,
+    parseLevel: parseIntegerLevel,
+  },
+  insane2: {
+    tableName: '第2発狂難易度表',
+    min: INSANE2_MIN_LEVEL,
+    max: INSANE2_MAX_LEVEL,
+    format: (level) => `▼${level}`,
+    parseLevel: parseIntegerLevel,
+  },
+  insaneEasy: {
+    tableName: '発狂BMS難度推定表 EASY',
+    min: INSANE_EASY_MIN_LEVEL,
+    max: INSANE_EASY_MAX_LEVEL,
+    format: (level) => `E★${level}`,
+    parseLevel: parseEstimateRangeLevel,
+  },
+  scratch: {
+    tableName: 'Scramble難易度表',
+    min: SCRAMBLE_MIN_LEVEL,
+    max: SCRAMBLE_MAX_LEVEL,
+    format: formatScrambleLevel,
+    parseLevel: parseIntegerLevel,
+  },
+};
+
+export function levelRangeForTrack(track: Track): [number, number] {
+  if (track === 'keys') return [MIN_TABLE_LEVEL, MAX_TABLE_LEVEL];
+  const config = SINGLE_TABLE_TRACKS[track];
+  return [config.min, config.max];
+}
+
 export function clampLevelForTrack(track: Track, level: number): number {
-  if (track === 'scratch') return clampScrambleLevel(level);
-  if (track === 'insane') return clampInsaneLevel(level);
-  return clampTableLevel(level);
+  const [min, max] = levelRangeForTrack(track);
+  return Math.max(min, Math.min(max, level));
 }
 
 export function formatLevelForTrack(track: Track, level: number): string {
-  if (track === 'scratch') return formatScrambleLevel(level);
-  if (track === 'insane') return formatInsaneLevel(level);
-  return formatLevelLabel(level);
+  if (track === 'keys') return formatLevelLabel(level);
+  return SINGLE_TABLE_TRACKS[track].format(level);
+}
+
+// matchesの中から、trackの軸での曲のレベルを返す(該当無し・軸外はnull)。matchesLevelと
+// estimateClearCeilingの両方がこれを使う(2026-10-01にlogic.tsで統一、2026-11-13に
+// トラック追加に合わせてSINGLE_TABLE_TRACKSの定義から引くようここへ移動)。難易度表には
+// "???"「提案」のような数値でないlevelもあるため、parseLevelがnullを返すものはスキップする。
+export function trackLevelOf(matches: readonly TableEntry[], track: Track): number | null {
+  if (track === 'keys') {
+    for (const m of matches) {
+      if (m.tableName !== 'Satellite' && m.tableName !== 'Stella') continue;
+      const level = parseIntegerLevel(m.level);
+      if (level === null) continue;
+      return m.tableName === 'Satellite' ? level : SATELLITE_LEVEL_COUNT + level;
+    }
+    return null;
+  }
+  const config = SINGLE_TABLE_TRACKS[track];
+  for (const m of matches) {
+    if (m.tableName !== config.tableName) continue;
+    const level = config.parseLevel(m.level);
+    if (level !== null && level >= config.min && level <= config.max) return level;
+  }
+  return null;
 }
 
 // テーマ選択肢。SpeedCategory(曲自体の分類)に加えて、カテゴリで絞り込まず全部から

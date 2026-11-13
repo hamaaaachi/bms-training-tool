@@ -11,6 +11,14 @@ const TABLE_CONFIGS = [
   { key: 'satellite', name: 'Satellite', headerUrl: 'https://stellabms.xyz/sl/header.json' },
   { key: 'stella', name: 'Stella', headerUrl: 'https://stellabms.xyz/st/header.json' },
   { key: 'insane', name: '発狂BMS難易度表', headerUrl: 'https://mirai-yokohama.sakura.ne.jp/bms/header_insane.json' },
+  // 第2発狂・発狂推定EASYは2026-11-13に追加。nameはcategoryEngine.tsのSINGLE_TABLE_TRACKSの
+  // tableNameと一致させること(曲と表の対応付けをこの名前で行うため)。
+  { key: 'insane2', name: '第2発狂難易度表', headerUrl: 'http://bmsnormal2.syuriken.jp/js/insane_header.json' },
+  {
+    key: 'insaneEasy',
+    name: '発狂BMS難度推定表 EASY',
+    headerUrl: 'http://walkure.net/hakkyou/for_glassist/bms/header_json.cgi?lamp=easy&min=0.0&max=24.5&step_count=49',
+  },
   { key: 'scramble', name: 'Scramble難易度表', headerUrl: 'https://egret9.github.io/Scramble/header.json' },
   { key: 'delayJoy', name: 'ディレイjoy', headerUrl: 'https://lets-go-time-hell.github.io/Delay-joy-table/header.json' },
   { key: 'delayShou', name: 'Delay小学校難易度表', headerUrl: 'https://wrench616.github.io/Delay/header.json' },

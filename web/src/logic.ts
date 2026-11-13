@@ -7,7 +7,7 @@ import {
   formatLevelForTrack,
   isThemeValidForTrack,
   pickByTheme,
-  SATELLITE_LEVEL_COUNT,
+  trackLevelOf,
 } from './recommend/categoryEngine';
 import type { AnalyzedSong, CategorySuggestion, Theme, Track } from './recommend/categoryEngine';
 import type { SpeedCategory } from './analysis/types';
@@ -147,41 +147,6 @@ export interface DailyRecommendationResult {
   levelStepAmount: number;
   suggestions: CategorySuggestion[];
   emptyReason: 'no-library' | 'no-tables' | null;
-}
-
-// matchesの中から、trackの軸(scratch→Scramble難易度表、insane→発狂BMS難易度表、
-// keys→SatelliteまたはStella)での曲のレベルを返す(該当無しはnull)。matchesLevelと
-// estimateClearCeilingで別々に書かれていた「このtrackでは曲がどの表の何番か」の判定を
-// 統一した(2026-10-01)。難易度表には"???"「提案」のような数値でないlevelもあるため、
-// Number(m.level)が有限でないものはスキップする。keysはSatelliteをStellaより優先する
-// 既存の優先順位を保つ。
-function trackLevelOf(matches: TableEntry[], track: Track): number | null {
-  if (track === 'scratch') {
-    for (const m of matches) {
-      if (m.tableName !== 'Scramble難易度表') continue;
-      const level = Number(m.level);
-      if (Number.isFinite(level)) return level;
-    }
-    return null;
-  }
-  if (track === 'insane') {
-    for (const m of matches) {
-      if (m.tableName !== '発狂BMS難易度表') continue;
-      const level = Number(m.level);
-      if (Number.isFinite(level)) return level;
-    }
-    return null;
-  }
-  for (const m of matches) {
-    if (m.tableName === 'Satellite') {
-      const level = Number(m.level);
-      if (Number.isFinite(level)) return level;
-    } else if (m.tableName === 'Stella') {
-      const level = Number(m.level);
-      if (Number.isFinite(level)) return SATELLITE_LEVEL_COUNT + level;
-    }
-  }
-  return null;
 }
 
 function matchesLevel(matches: TableEntry[], track: Track, level: number): boolean {
